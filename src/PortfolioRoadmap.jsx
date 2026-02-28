@@ -121,30 +121,58 @@ const Icons = {
   target:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="22" y1="12" x2="15" y2="12"/><line x1="9" y1="12" x2="2" y2="12"/></svg>,
   refresh:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
 };
-const FAVICON = d => `https://www.google.com/s2/favicons?domain=${d}&sz=64`;
-const PLATFORM_ICONS = {
-  "trade-republic":      <img src={FAVICON("traderepublic.com")} alt="" />,
-  "interactive-brokers": <img src={FAVICON("interactivebrokers.com")} alt="" />,
-  "revolut":             <img src={FAVICON("revolut.com")} alt="" />,
-  "etoro":               <img src={FAVICON("etoro.com")} alt="" />,
-  "degiro":              <img src={FAVICON("degiro.eu")} alt="" />,
-  "robinhood":           <img src={FAVICON("robinhood.com")} alt="" />,
-  "coinbase":            <img src={FAVICON("coinbase.com")} alt="" />,
-  "binance":             <img src={FAVICON("binance.com")} alt="" />,
-  "scalable":            <img src={FAVICON("scalable.capital")} alt="" />,
-  "freedom24":           <img src={FAVICON("freedom24.com")} alt="" />,
-  "fidelity":            <img src={FAVICON("fidelity.com")} alt="" />,
-  "schwab":              <img src={FAVICON("schwab.com")} alt="" />,
-  "vanguard":            <img src={FAVICON("vanguard.com")} alt="" />,
-  "webull":              <img src={FAVICON("webull.com")} alt="" />,
-  "freetrade":           <img src={FAVICON("freetrade.io")} alt="" />,
-  "saxo":                <img src={FAVICON("home.saxo")} alt="" />,
-  "ig":                  <img src={FAVICON("ig.com")} alt="" />,
-  "xtb":                 <img src={FAVICON("xtb.com")} alt="" />,
-  "kraken":              <img src={FAVICON("kraken.com")} alt="" />,
-  "bitpanda":            <img src={FAVICON("bitpanda.com")} alt="" />,
-  "other":               <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#78909c"/><circle cx="8" cy="12" r="1.5" fill="#fff"/><circle cx="12" cy="12" r="1.5" fill="#fff"/><circle cx="16" cy="12" r="1.5" fill="#fff"/></svg>,
+const FAVICON_SOURCES = d => [
+  `https://www.google.com/s2/favicons?domain=${d}&sz=64`,
+  `https://icons.duckduckgo.com/ip3/${d}.ico`,
+  `https://faviconkit.com/${d}/64`,
+];
+const PLATFORM_ICON_DOMAINS = {
+  "trade-republic": "traderepublic.com",
+  "interactive-brokers": "interactivebrokers.com",
+  "revolut": "revolut.com",
+  "etoro": "etoro.com",
+  "degiro": "degiro.eu",
+  "robinhood": "robinhood.com",
+  "coinbase": "coinbase.com",
+  "binance": "binance.com",
+  "scalable": "scalable.capital",
+  "freedom24": "freedom24.com",
+  "fidelity": "fidelity.com",
+  "schwab": "schwab.com",
+  "vanguard": "vanguard.com",
+  "webull": "webull.com",
+  "freetrade": "freetrade.io",
+  "saxo": "home.saxo",
+  "ig": "ig.com",
+  "xtb": "xtb.com",
+  "kraken": "kraken.com",
+  "bitpanda": "bitpanda.com",
 };
+
+function PlatformIcon({ platform }) {
+  const [srcIndex, setSrcIndex] = useState(0);
+  const domain = PLATFORM_ICON_DOMAINS[platform.id] || "";
+  const fallbackLabel = platform.name.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase() || "--";
+  const sources = domain ? FAVICON_SOURCES(domain) : [];
+
+  useEffect(() => {
+    setSrcIndex(0);
+  }, [platform.id]);
+
+  if (!domain || srcIndex >= sources.length) {
+    return <span className="platform-fallback" aria-hidden="true">{fallbackLabel}</span>;
+  }
+
+  return (
+    <img
+      src={sources[srcIndex]}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setSrcIndex(i => i + 1)}
+    />
+  );
+}
 
 function Icon({ name, style, className }) {
   const svg = Icons[name];
@@ -159,7 +187,7 @@ function PlatformBadge({ platformId }) {
   const p = PLATFORMS.find(x => x.id === platformId) || PLATFORMS[0];
   return (
     <span className="platform-badge" style={{ "--p-color": p.color }}>
-      <span className="platform-ico" aria-hidden="true">{PLATFORM_ICONS[p.id]}</span>
+      <span className="platform-ico" aria-hidden="true"><PlatformIcon platform={p}/></span>
       <span>{p.name}</span>
     </span>
   );
@@ -1968,7 +1996,7 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                         aria-label={p.name}
                         aria-pressed={state.platform === p.id}
                       >
-                        <span className="platform-opt-ico" aria-hidden="true">{PLATFORM_ICONS[p.id]}</span>
+                        <span className="platform-opt-ico" aria-hidden="true"><PlatformIcon platform={p}/></span>
                         <span className="platform-opt-name">{p.name}</span>
                       </button>
                     ))}
@@ -3052,6 +3080,7 @@ function getCSS() { return `
 .platform-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px 2px 4px; border-radius:20px; background:color-mix(in srgb, var(--p-color) 15%, transparent); color:var(--p-color); font-size:12px; font-weight:600; vertical-align:middle; line-height:1.3; }
 .platform-ico { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:4px; overflow:hidden; }
 .platform-ico svg,.platform-ico img { width:16px; height:16px; display:block; }
+.platform-fallback { width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:color-mix(in srgb, var(--p-color) 22%, #0f172a); color:#fff; font-size:9px; font-weight:700; letter-spacing:.3px; border-radius:inherit; text-transform:uppercase; }
 
 /* ── PLATFORM PICKER ── */
 .platform-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; width:100%; }
@@ -3060,6 +3089,7 @@ function getCSS() { return `
 .platform-opt.active { border-color:var(--p-color); background:color-mix(in srgb, var(--p-color) 15%, var(--surface)); color:var(--p-color); font-weight:600; }
 .platform-opt-ico { width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:6px; overflow:hidden; }
 .platform-opt-ico svg,.platform-opt-ico img { width:28px; height:28px; display:block; object-fit:contain; }
+.platform-opt-ico .platform-fallback { font-size:10px; }
 .platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; line-height:1.2; }
 @media (max-width:540px) { .platform-grid { grid-template-columns:repeat(3,1fr); gap:5px; } }
 @media (min-width:541px) and (max-width:768px) { .platform-grid { grid-template-columns:repeat(4,1fr); } }
