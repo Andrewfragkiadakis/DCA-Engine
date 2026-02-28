@@ -2,7 +2,7 @@
 
 > Dollar-Cost Averaging rebalancing engine. Track, project, and rebalance your portfolio with intelligent monthly allocation.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-dca--engine.vercel.app-0fba48?style=flat-square&logo=vercel)](https://dca-engine.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-dca--engine--seven.vercel.app-0fba48?style=flat-square&logo=vercel)](https://dca-engine-seven.vercel.app)
 ![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite)
 ![Zero Backend](https://img.shields.io/badge/Backend-None-gray?style=flat-square)
