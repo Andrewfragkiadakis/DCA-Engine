@@ -44,38 +44,6 @@ npm run build    # production build → dist/
 npm run preview  # preview production build
 ```
 
-### Optional Environment Variables (for richer live quotes)
-
-Set these in Vercel Project Settings → Environment Variables:
-
-- `TWELVE_DATA_API_KEY`
-- `FINNHUB_API_KEY`
-- `POLYGON_API_KEY`
-- `COINMARKETCAP_API_KEY`
-
-Optional snapshot persistence to Supabase:
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-Without keys, the app still works and crypto/FX providers continue with public fallbacks.
-
-### Free Private Access (Vercel Middleware Password Gate)
-
-This repo includes a free server-side password gate via `middleware.js`.
-
-Set these required env vars in Vercel:
-
-- `SITE_USERNAME`
-- `SITE_PASSWORD`
-
-After setting them, redeploy. Your app will require HTTP Basic Auth before loading the UI.
-
-Notes:
-
-- API endpoints under `/api/*` are excluded from this gate by default.
-- If either env var is missing, access is denied (fail-closed behavior).
-
 ## Stack
 
 | Layer | Technology |
