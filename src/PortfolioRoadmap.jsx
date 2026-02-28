@@ -327,7 +327,7 @@ function loadState() {
       platform:         PLATFORMS.some(x => x.id === p.platform) ? p.platform : "trade-republic",
       live: {
         enabled: !!p?.live?.enabled,
-        refreshSec: sanitizeNum(p?.live?.refreshSec, 15, 300, 60),
+        refreshSec: sanitizeNum(p?.live?.refreshSec, 15, 3600, 300),
         baselineTotal: p?.live?.baselineTotal == null ? null : sanitizeNum(p.live.baselineTotal, 0, 100_000_000, 0),
         lastFetchedAt: typeof p?.live?.lastFetchedAt === "string" ? p.live.lastFetchedAt : null,
         providerHealth: p?.live?.providerHealth && typeof p.live.providerHealth === "object" ? p.live.providerHealth : {},
@@ -707,7 +707,7 @@ function App() {
   }, [refreshLiveData]);
 
   const updateLiveRefreshSec = useCallback((v) => {
-    const refreshSec = sanitizeNum(v, 15, 300, 60);
+    const refreshSec = sanitizeNum(v, 15, 3600, 300);
     setState(s => ({ ...s, live: { ...s.live, refreshSec } }));
   }, []);
 
@@ -779,7 +779,7 @@ function App() {
       }
       return;
     }
-    const refreshMs = sanitizeNum(state?.live?.refreshSec, 15, 300, 60) * 1000;
+    const refreshMs = sanitizeNum(state?.live?.refreshSec, 15, 3600, 300) * 1000;
     if (liveTimerRef.current) clearInterval(liveTimerRef.current);
     liveTimerRef.current = setInterval(() => refreshLiveData({ silent: true }), refreshMs);
     return () => {
@@ -1014,6 +1014,7 @@ function App() {
               platformId={state.platform}
               liveEnabled={state.live.enabled}
               liveRefreshSec={state.live.refreshSec}
+              liveLastFetchedAt={state.live.lastFetchedAt}
               liveLoading={liveLoading}
               liveError={liveError}
               liveModel={liveModel}
@@ -1169,7 +1170,7 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────
-function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId, liveEnabled, liveRefreshSec, liveLoading, liveError, liveModel, onToggleLive, onRefreshLive, onUpdateLiveRefresh, driftAlerts }) {
+function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId, liveEnabled, liveRefreshSec, liveLastFetchedAt, liveLoading, liveError, liveModel, onToggleLive, onRefreshLive, onUpdateLiveRefresh, driftAlerts }) {
   const [localVals, setLocalVals] = useState({});
 
   useEffect(() => {
@@ -1205,8 +1206,8 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
               className="live-refresh-inp mono"
               type="number"
               min="15"
-              max="300"
-              step="5"
+              max="3600"
+              step="15"
               value={liveRefreshSec}
               onChange={e => onUpdateLiveRefresh(e.target.value)}
               aria-label="Live refresh interval seconds"
@@ -1216,6 +1217,13 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
               <Icon name="refresh" style={{ width:12, height:12 }}/>{liveLoading ? "Refreshing" : "Refresh"}
             </button>
           </div>
+          {liveEnabled && (
+            <div className="live-last-updated mono">
+              {liveLastFetchedAt
+                ? `Last updated: ${new Date(liveLastFetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                : liveLoading ? "Fetching…" : "Not yet fetched"}
+            </div>
+          )}
         </div>
 
         {liveError && <div className="live-error">{liveError}</div>}
@@ -1941,9 +1949,9 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                   </button>
                 </SettingRow>
                 <SettingDivider/>
-                <SettingRow title="Refresh Interval" desc="Polling frequency for live quotes (15–300 sec)">
+                <SettingRow title="Refresh Interval" desc="Polling frequency for live quotes (15 sec – 1 hour). Use higher values to stay within free-tier API limits.">
                   <div className="editor-inp-wrap">
-                    <input className="editor-inp mono" type="number" min="15" max="300" step="5"
+                    <input className="editor-inp mono" type="number" min="15" max="3600" step="15"
                       value={liveRefreshSec}
                       onChange={e => onUpdateLiveRefresh(e.target.value)}
                       style={{ width:64 }} aria-label="Live refresh interval seconds"/>
@@ -2823,6 +2831,7 @@ function getCSS() { return `
 .live-refresh-inp { width:58px; border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text); padding:5px 8px; }
 .live-error { font-size:12px; color:var(--accent-red); background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.25); border-radius:9px; padding:7px 9px; }
 .live-meta { font-size:11px; color:var(--text4); }
+.live-last-updated { font-size:11px; color:var(--text4); margin-top:4px; letter-spacing:.01em; }
 .live-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
 .live-kpi { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px; display:flex; flex-direction:column; gap:4px; }
 .live-kpi span { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.7px; }
