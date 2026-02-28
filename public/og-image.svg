@@ -1,0 +1,160 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0a0f1a"/>
+
+  <!-- Radial glow — right side (amber) -->
+  <radialGradient id="glowR" cx="78%" cy="45%" r="38%" gradientUnits="objectBoundingBox">
+    <stop offset="0%" stop-color="#FF9800" stop-opacity="0.09"/>
+    <stop offset="100%" stop-color="#0a0f1a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="1200" height="630" fill="url(#glowR)"/>
+
+  <!-- Radial glow — left side (blue) -->
+  <radialGradient id="glowL" cx="18%" cy="30%" r="32%" gradientUnits="objectBoundingBox">
+    <stop offset="0%" stop-color="#42A5F5" stop-opacity="0.06"/>
+    <stop offset="100%" stop-color="#0a0f1a" stop-opacity="0"/>
+  </radialGradient>
+  <rect width="1200" height="630" fill="url(#glowL)"/>
+
+  <!-- Subtle grid -->
+  <line x1="0" y1="157" x2="1200" y2="157" stroke="#1a2540" stroke-width="1"/>
+  <line x1="0" y1="315" x2="1200" y2="315" stroke="#1a2540" stroke-width="1"/>
+  <line x1="0" y1="472" x2="1200" y2="472" stroke="#1a2540" stroke-width="1"/>
+  <line x1="400" y1="0" x2="400" y2="630" stroke="#1a2540" stroke-width="1"/>
+  <line x1="800" y1="0" x2="800" y2="630" stroke="#1a2540" stroke-width="1"/>
+
+  <!-- ── LEFT SECTION ── -->
+
+  <!-- Orange left accent bar -->
+  <rect x="58" y="80" width="5" height="190" rx="2.5" fill="#FF9800"/>
+
+  <!-- "DCA" main title -->
+  <text x="84" y="188" font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="118" font-weight="900" fill="white" letter-spacing="-5">DCA</text>
+
+  <!-- "ENGINE" subtitle -->
+  <text x="86" y="272" font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="66" font-weight="700" fill="#FF9800" letter-spacing="10">ENGINE</text>
+
+  <!-- Tagline -->
+  <text x="86" y="322" font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="21" fill="#7a91b8" letter-spacing="0.5">Portfolio Rebalancing Engine</text>
+
+  <!-- Category pills -->
+  <rect x="86"  y="350" width="108" height="32" rx="16" fill="#FF9800" fill-opacity="0.13" stroke="#FF9800" stroke-opacity="0.45" stroke-width="1"/>
+  <text x="140" y="371" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#FF9800" text-anchor="middle">Crypto</text>
+
+  <rect x="204" y="350" width="88"  height="32" rx="16" fill="#5C6BC0" fill-opacity="0.13" stroke="#7986cb" stroke-opacity="0.45" stroke-width="1"/>
+  <text x="248" y="371" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#9fa8da" text-anchor="middle">Tech</text>
+
+  <rect x="302" y="350" width="116" height="32" rx="16" fill="#66BB6A" fill-opacity="0.13" stroke="#66BB6A" stroke-opacity="0.45" stroke-width="1"/>
+  <text x="360" y="371" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#66BB6A" text-anchor="middle">Dividend</text>
+
+  <rect x="428" y="350" width="78"  height="32" rx="16" fill="#42A5F5" fill-opacity="0.13" stroke="#42A5F5" stroke-opacity="0.45" stroke-width="1"/>
+  <text x="467" y="371" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#42A5F5" text-anchor="middle">ETF</text>
+
+  <!-- Feature bullets -->
+  <circle cx="91" cy="416" r="4" fill="#10b981"/>
+  <text x="106" y="422" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#7a91b8">Monthly DCA allocation engine</text>
+
+  <circle cx="91" cy="452" r="4" fill="#10b981"/>
+  <text x="106" y="458" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#7a91b8">Multi-month projection · 1–12 months ahead</text>
+
+  <circle cx="91" cy="488" r="4" fill="#10b981"/>
+  <text x="106" y="494" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#7a91b8">Export JSON · CSV · localStorage persistence</text>
+
+  <circle cx="91" cy="524" r="4" fill="#10b981"/>
+  <text x="106" y="530" font-family="system-ui,-apple-system,sans-serif" font-size="16" fill="#7a91b8">Auto dark/light theme · Currency selector</text>
+
+  <!-- ── DIVIDER ── -->
+  <line x1="625" y1="55" x2="625" y2="575" stroke="#1e2d4a" stroke-width="1.5"/>
+
+  <!-- ── RIGHT SECTION: Chart ── -->
+
+  <!-- Section label -->
+  <text x="672" y="106" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#3d5473" letter-spacing="2.5">PORTFOLIO ALLOCATION</text>
+
+  <!-- Horizontal chart grid -->
+  <line x1="652" y1="480" x2="1150" y2="480" stroke="#2a3a58" stroke-width="1.5"/>
+  <line x1="652" y1="400" x2="1150" y2="400" stroke="#1a2540" stroke-width="1" stroke-dasharray="4,5"/>
+  <line x1="652" y1="320" x2="1150" y2="320" stroke="#1a2540" stroke-width="1" stroke-dasharray="4,5"/>
+  <line x1="652" y1="240" x2="1150" y2="240" stroke="#1a2540" stroke-width="1" stroke-dasharray="4,5"/>
+  <line x1="652" y1="160" x2="1150" y2="160" stroke="#1a2540" stroke-width="1" stroke-dasharray="4,5"/>
+
+  <!-- Bar 1: Crypto #FF9800 — x=666, w=62, h=200, y=280 -->
+  <rect x="666" y="280" width="62" height="200" rx="5" fill="#FF9800" fill-opacity="0.18"/>
+  <rect x="666" y="280" width="62" height="200" rx="5" fill="url(#bCrypto)"/>
+  <linearGradient id="bCrypto" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#FF9800" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#FF9800" stop-opacity="0.45"/>
+  </linearGradient>
+  <text x="697" y="498" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="600" fill="#FF9800" text-anchor="middle">BTC</text>
+
+  <!-- Bar 2: Tech #5C6BC0 — x=742, w=62, h=170, y=310 -->
+  <rect x="742" y="310" width="62" height="170" rx="5" fill="url(#bTech)"/>
+  <linearGradient id="bTech" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#7986CB" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#5C6BC0" stop-opacity="0.45"/>
+  </linearGradient>
+  <text x="773" y="498" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="600" fill="#9fa8da" text-anchor="middle">TECH</text>
+
+  <!-- Bar 3: Dividend #66BB6A — x=818, w=62, h=185, y=295 -->
+  <rect x="818" y="295" width="62" height="185" rx="5" fill="url(#bDiv)"/>
+  <linearGradient id="bDiv" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#66BB6A" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#66BB6A" stop-opacity="0.45"/>
+  </linearGradient>
+  <text x="849" y="498" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="600" fill="#66BB6A" text-anchor="middle">DIV</text>
+
+  <!-- Bar 4: ETF #42A5F5 — x=894, w=62, h=150, y=330 -->
+  <rect x="894" y="330" width="62" height="150" rx="5" fill="url(#bETF)"/>
+  <linearGradient id="bETF" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#42A5F5" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#42A5F5" stop-opacity="0.45"/>
+  </linearGradient>
+  <text x="925" y="498" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="600" fill="#42A5F5" text-anchor="middle">ETF</text>
+
+  <!-- Bar 5: Bond #AB47BC — x=970, w=62, h=110, y=370 -->
+  <rect x="970" y="370" width="62" height="110" rx="5" fill="url(#bBond)"/>
+  <linearGradient id="bBond" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#CE93D8" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#AB47BC" stop-opacity="0.45"/>
+  </linearGradient>
+  <text x="1001" y="498" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="600" fill="#CE93D8" text-anchor="middle">BOND</text>
+
+  <!-- Bar 6: Commodity #EC407A — x=1046, w=62, h=85, y=395 -->
+  <rect x="1046" y="395" width="62" height="85" rx="5" fill="url(#bCom)"/>
+  <linearGradient id="bCom" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#F48FB1" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#EC407A" stop-opacity="0.45"/>
+  </linearGradient>
+  <text x="1077" y="498" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="600" fill="#F48FB1" text-anchor="middle">CMDTY</text>
+
+  <!-- Trend line over bars -->
+  <path d="M697,273 L773,303 L849,288 L925,323 L1001,363 L1077,388" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-opacity="0.55"/>
+
+  <!-- Trend dots -->
+  <circle cx="697" cy="273" r="4" fill="white" fill-opacity="0.7"/>
+  <circle cx="773" cy="303" r="4" fill="white" fill-opacity="0.7"/>
+  <circle cx="849" cy="288" r="4" fill="white" fill-opacity="0.7"/>
+  <circle cx="925" cy="323" r="4" fill="white" fill-opacity="0.7"/>
+  <circle cx="1001" cy="363" r="4" fill="white" fill-opacity="0.7"/>
+  <circle cx="1077" cy="388" r="4" fill="white" fill-opacity="0.7"/>
+
+  <!-- Info badges -->
+  <rect x="666" y="128" width="164" height="36" rx="8" fill="#FF9800" fill-opacity="0.11" stroke="#FF9800" stroke-opacity="0.35" stroke-width="1"/>
+  <text x="748" y="151" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#FF9800" text-anchor="middle">€ 500 / month DCA</text>
+
+  <rect x="844" y="128" width="210" height="36" rx="8" fill="#10b981" fill-opacity="0.11" stroke="#10b981" stroke-opacity="0.35" stroke-width="1"/>
+  <text x="949" y="151" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#10b981" text-anchor="middle">Gap-weighted rebalancing</text>
+
+  <!-- React + Vite badge -->
+  <rect x="1066" y="128" width="72" height="36" rx="8" fill="#1a2540" stroke="#2a3a58" stroke-width="1"/>
+  <text x="1102" y="151" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#4a6080" text-anchor="middle">React+Vite</text>
+
+  <!-- ── BOTTOM BAR ── -->
+  <rect x="0" y="576" width="1200" height="54" fill="#060b14"/>
+  <line x1="0" y1="576" x2="1200" y2="576" stroke="#1a2540" stroke-width="1"/>
+  <text x="80" y="610" font-family="system-ui,-apple-system,sans-serif" font-size="17" fill="#3d5473">github.com/Andrewfragkiadakis/DCA-Engine</text>
+
+  <!-- CTA button -->
+  <rect x="1060" y="588" width="112" height="30" rx="6" fill="#FF9800"/>
+  <text x="1116" y="608" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="700" fill="#0a0f1a" text-anchor="middle">Open App →</text>
+</svg>

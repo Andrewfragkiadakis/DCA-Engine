@@ -1,0 +1,33 @@
+{
+  "name": "DCA Engine",
+  "short_name": "DCA Engine",
+  "description": "DCA Portfolio Rebalancing Engine — track, project, and rebalance your portfolio with intelligent monthly allocation.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1a",
+  "theme_color": "#0a0f1a",
+  "orientation": "any",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.svg",
+      "sizes": "1200x630",
+      "type": "image/svg+xml",
+      "label": "DCA Engine — Portfolio Rebalancing"
+    }
+  ]
+}
