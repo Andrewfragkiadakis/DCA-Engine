@@ -73,8 +73,11 @@ const PLATFORMS = [
 
 // ─── SVG ICON LIBRARY ─────────────────────────────────────────
 const Icons = {
-  bitcoin:     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#F7931A"/><path d="M16.66 10.13c.27-1.8-1.1-2.8-2.98-3.45l.61-2.43-1.48-.37-.59 2.37c-.39-.1-.8-.19-1.21-.29l.6-2.37-1.49-.37-.61 2.45c-.32-.08-.64-.15-.96-.23L6.96 5l-.7 2.82s1.96.45 1.96.48c1.09.27 1.29 1 .84 2.09l-1.18 4.71c.07.02.16.05.26.11-.08-.03-.2-.06-.28-.08l-.83 3.35c-.06.77-.55 1.93-2.01 1.54 0 0-1.4-.35-1.4-.35l-.98 2.26 1.86.46c.35.09.7.18 1.05.27l-.61 2.46 1.49.37.61-2.45c.4.11.79.21 1.18.31l-.6 2.44 1.49.37.6-2.43c2.53.48 4.43.29 5.23-2 .63-1.8-.03-2.85-1.33-3.52 1 .23 1.76-.09 1.96-1.9zM12 14.5c0 1.54-5.96.72-6.1.09l1.09-4.36c1.55.39 6.54-1.29 5.01 4.27zm1.14-5.83c0 1.41-4.9.7-5.01.12l.99-3.95c1.42.36 5.53-1.24 4.02 3.83z" fill="#FFF"/></svg>,
-  ethereum:    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 17.97L4.58 13.62 11.943 24l7.37-10.38-7.372 4.35h.003zM12.056 0L4.69 12.223l7.365 4.354 7.365-4.35L12.056 0z"/></svg>,
+  bitcoin:     <img src="https://cdn.worldvectorlogo.com/logos/bitcoin.svg" alt="BTC" style={{width:24, height:24, display:'block'}} />, 
+  ethereum:    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Ethereum-icon-purple.svg/1920px-Ethereum-icon-purple.svg.png" alt="ETH" style={{width:24, height:24, display:'block'}} />, 
+  nvidia:      <img src="https://cdn.worldvectorlogo.com/logos/nvidia.svg" alt="NVIDIA" style={{width:24, height:24, display:'block'}} loading="lazy" referrerPolicy="no-referrer" crossOrigin="anonymous"/>, 
+  coca_cola:   <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#E41B17"/><text x="12" y="16" fontSize="12" fontFamily="Arial,Helvetica,sans-serif" fontWeight="700" fill="#fff" textAnchor="middle">C</text></svg>,
+  jnj:         <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#b30000"/><text x="12" y="16" fontSize="10" fontFamily="Georgia,serif" fontWeight="700" fill="#fff" textAnchor="middle">J&amp;J</text></svg>,
   microchip:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M7 9H4M7 12H4M7 15H4M17 9h3M17 12h3M17 15h3M9 7V4M12 7V4M15 7V4M9 17v3M12 17v3M15 17v3"/></svg>,
   apple:       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>,
   microsoft:   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/></svg>,
@@ -261,11 +264,11 @@ function sanitizeAsset(a) {
 const DEFAULT_ASSETS = [
   { name:"BTC",            ticker:"BTC",  cat:"Crypto",   current:178,  target:11.5,  icon:"bitcoin"    },
   { name:"ETH",            ticker:"ETH",  cat:"Crypto",   current:87,   target:6.0,   icon:"ethereum"   },
-  { name:"NVIDIA",         ticker:"NVDA", cat:"Tech",     current:163,  target:6.67,  icon:"microchip"  },
+  { name:"NVIDIA",         ticker:"NVDA", cat:"Tech",     current:163,  target:6.67,  icon:"nvidia"  },
   { name:"Apple",          ticker:"AAPL", cat:"Tech",     current:148,  target:6.67,  icon:"apple"      },
   { name:"Microsoft",      ticker:"MSFT", cat:"Tech",     current:118,  target:6.67,  icon:"microsoft"  },
-  { name:"Coca-Cola",      ticker:"KO",   cat:"Dividend", current:239,  target:8.75,  icon:"circleDot"  },
-  { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"plus"       },
+  { name:"Coca-Cola",      ticker:"KO",   cat:"Dividend", current:239,  target:8.75,  icon:"coca_cola"  },
+  { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"jnj"       },
   { name:"S&P 500 ETF",    ticker:"SPY",  cat:"ETF",      current:434,  target:18.0,  icon:"chartPie"   },
   { name:"FTSE All World", ticker:"VWCE", cat:"ETF",      current:367,  target:15.0,  icon:"globe"      },
   { name:"Hi Div ETF",     ticker:"VHYL", cat:"ETF",      current:249,  target:12.0,  icon:"handDollar" },
