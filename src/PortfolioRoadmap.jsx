@@ -42,6 +42,18 @@ const CAT_ICONS = {
   Crypto: "coins", Tech: "laptop", Dividend: "handDollar",
   ETF: "layers", Bond: "shield", Commodity: "star", Other: "barChart",
 };
+const PLATFORMS = [
+  { id: "trade-republic",      name: "Trade Republic",      color: "#0fba48" },
+  { id: "interactive-brokers", name: "Interactive Brokers", color: "#e31837" },
+  { id: "revolut",             name: "Revolut",             color: "#4c6ef5" },
+  { id: "etoro",               name: "eToro",               color: "#11a65c" },
+  { id: "degiro",              name: "DEGIRO",              color: "#004990" },
+  { id: "robinhood",           name: "Robinhood",           color: "#00c805" },
+  { id: "coinbase",            name: "Coinbase",            color: "#0052ff" },
+  { id: "binance",             name: "Binance",             color: "#f3ba2f" },
+  { id: "scalable",            name: "Scalable Capital",    color: "#6c3af5" },
+  { id: "other",               name: "Other",               color: "#78909c" },
+];
 
 // ─── SVG ICON LIBRARY ─────────────────────────────────────────
 const Icons = {
@@ -93,6 +105,18 @@ const Icons = {
   target:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="22" y1="12" x2="15" y2="12"/><line x1="9" y1="12" x2="2" y2="12"/></svg>,
   refresh:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
 };
+const PLATFORM_ICONS = {
+  "trade-republic":      <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#0fba48"/><path d="M7 12l3.5 3.5L17 8" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  "interactive-brokers": <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#e31837"/><path d="M8 7v10M16 7v10M8 12h8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/></svg>,
+  "revolut":             <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="12" fill="#191c4b"/><path d="M9 7h3.5c2 0 3.5 1.2 3.5 3s-1.5 3-3.5 3H9V7zM9 13l4 4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  "etoro":               <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#11a65c"/><circle cx="12" cy="9" r="3" fill="#fff"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>,
+  "degiro":              <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#004990"/><circle cx="12" cy="13" r="4" stroke="#fff" strokeWidth="1.8"/><rect x="11" y="5" width="2" height="4" rx="1" fill="#fff"/></svg>,
+  "robinhood":           <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="12" fill="#00c805"/><path d="M12 17V8M8 11l4-4 4 4" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  "coinbase":            <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#0052ff"/><circle cx="12" cy="12" r="6" fill="#fff"/><path d="M14.5 9.5a3 3 0 0 0-5 2.5 3 3 0 0 0 5 2.5" stroke="#0052ff" strokeWidth="1.8" strokeLinecap="round"/></svg>,
+  "binance":             <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#1a1a2e"/><path d="M12 5l2 2-2 2-2-2 2-2zM5 12l2-2 2 2-2 2-2-2zM19 12l-2-2-2 2 2 2 2-2zM12 19l-2-2 2-2 2 2-2 2zM10.5 12l1.5-1.5 1.5 1.5-1.5 1.5-1.5-1.5z" fill="#f3ba2f"/></svg>,
+  "scalable":            <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#6c3af5"/><rect x="5" y="15" width="3" height="4" rx="1" fill="#fff"/><rect x="10.5" y="11" width="3" height="8" rx="1" fill="#fff"/><rect x="16" y="7" width="3" height="12" rx="1" fill="#fff"/></svg>,
+  "other":               <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#78909c"/><circle cx="8" cy="12" r="1.5" fill="#fff"/><circle cx="12" cy="12" r="1.5" fill="#fff"/><circle cx="16" cy="12" r="1.5" fill="#fff"/></svg>,
+};
 
 function Icon({ name, style, className }) {
   const svg = Icons[name];
@@ -100,6 +124,15 @@ function Icon({ name, style, className }) {
   return (
     <span className={`svg-icon${className ? " " + className : ""}`} style={style} aria-hidden="true">
       {svg}
+    </span>
+  );
+}
+function PlatformBadge({ platformId }) {
+  const p = PLATFORMS.find(x => x.id === platformId) || PLATFORMS[0];
+  return (
+    <span className="platform-badge" style={{ "--p-color": p.color }}>
+      <span className="platform-ico" aria-hidden="true">{PLATFORM_ICONS[p.id]}</span>
+      <span>{p.name}</span>
     </span>
   );
 }
@@ -189,6 +222,7 @@ const DEFAULT_STATE = {
   theme: "auto",
   projectionMonths: 3,
   history: [],
+  platform: "trade-republic",
 };
 
 // ─── STORAGE (versioned) ──────────────────────────────────────
@@ -218,6 +252,7 @@ function loadState() {
       projectionMonths: sanitizeNum(p.projectionMonths, 1, 12, 3),
       history:          Array.isArray(p.history) ? p.history.slice(-120) : [],
       schemaVersion:    SCHEMA_VERSION,
+      platform:         PLATFORMS.some(x => x.id === p.platform) ? p.platform : "trade-republic",
     };
   } catch { return null; }
 }
@@ -471,6 +506,11 @@ function App() {
 
   const removeAsset = useCallback((ticker) => setState(s => ({ ...s, assets: s.assets.filter(a => a.ticker !== ticker) })), []);
 
+  const updatePlatform = useCallback((id) => {
+    setState(s => ({ ...s, platform: id }));
+    showToast("Platform updated");
+  }, [showToast]);
+
   const doLockMonth = useCallback((note = "") => {
     const step = projection.steps[0];
     if (!step) return;
@@ -536,6 +576,7 @@ function App() {
           projectionMonths: sanitizeNum(parsed.projectionMonths, 1, 12, 3),
           history:          Array.isArray(parsed.history) ? parsed.history.slice(-120) : [],
           schemaVersion:    SCHEMA_VERSION,
+          platform:         PLATFORMS.some(x => x.id === parsed.platform) ? parsed.platform : "trade-republic",
           assets,
         });
         showToast(`Portfolio imported — ${assets.length} assets loaded.`);
@@ -579,7 +620,7 @@ function App() {
               </div>
               <h1 className="hdr-title">Portfolio Roadmap</h1>
               <div className="hdr-sub-row">
-                <span className="hdr-sub">{state.assets.length} assets · Buy-only · Trade Republic</span>
+                <span className="hdr-sub">{state.assets.length} assets · Buy-only · <PlatformBadge platformId={state.platform}/></span>
                 <span className="hdr-sep">·</span>
                 {editingDca ? (
                   <form className="dca-edit-form" onSubmit={e => { e.preventDefault(); commitDca(); }}>
@@ -667,6 +708,7 @@ function App() {
               setEditOpen={setEditOpen}
               onUpdateCurrent={(ticker, val) => { updateAsset(ticker, "current", val); showToast(`${ticker} updated`); }}
               assets={state.assets}
+              platformId={state.platform}
             />
           )}
           {tab >= 1 && tab <= projection.steps.length && (
@@ -710,6 +752,7 @@ function App() {
           onUpdateCurrency={c  => { setState(s => ({ ...s, currency: c })); showToast(`Currency set to ${c}`); }}
           onUpdateTheme={t     => setState(s => ({ ...s, theme: t }))}
           onUpdateProjection={v => setState(s => ({ ...s, projectionMonths: sanitizeNum(v, 1, 12, 3) }))}
+          onUpdatePlatform={updatePlatform}
           onUpdateAsset={updateAsset}
           onAddAsset={addAsset}
           onRemoveAsset={removeAsset}
@@ -775,7 +818,7 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────
-function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets }) {
+function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId }) {
   const [localVals, setLocalVals] = useState({});
 
   useEffect(() => {
@@ -889,7 +932,7 @@ function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen,
           <div className="editor-hdr-l">
             <Icon name="edit" style={{ width:15, height:15, color:"var(--accent-indigo)" }}/>
             <span className="editor-hdr-title">Update Holdings</span>
-            <span className="editor-hint">Enter your real Trade Republic values after each session</span>
+            <span className="editor-hint">Enter your real {PLATFORMS.find(p => p.id === platformId)?.name ?? "brokerage"} values after each session</span>
           </div>
           <div className={`chevron ${editOpen ? "open" : ""}`} aria-hidden="true">▾</div>
         </button>
@@ -1252,7 +1295,7 @@ function HistoryTab({ history, cy }) {
 }
 
 // ─── SETTINGS MODAL ───────────────────────────────────────────
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onReset, targetSum, targetOk, showToast, total }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onReset, targetSum, targetOk, showToast, total }) {
   const [section, setSection] = useState("general");
   const [localDca, setLocalDca] = useState(String(state.dca));
   const modalRef = useRef(null);
@@ -1297,6 +1340,24 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                 {CURRENCIES.map(c => (
                   <button key={c} className={`seg-btn ${state.currency === c ? "active" : ""}`}
                     onClick={() => onUpdateCurrency(c)}>{c}</button>
+                ))}
+              </div>
+            </SettingRow>
+            <SettingDivider/>
+            <SettingRow title="Platform" desc="Your brokerage or trading platform">
+              <div className="platform-grid">
+                {PLATFORMS.map(p => (
+                  <button key={p.id}
+                    className={`platform-opt ${state.platform === p.id ? "active" : ""}`}
+                    style={{ "--p-color": p.color }}
+                    onClick={() => onUpdatePlatform(p.id)}
+                    title={p.name}
+                    aria-label={p.name}
+                    aria-pressed={state.platform === p.id}
+                  >
+                    <span className="platform-opt-ico" aria-hidden="true">{PLATFORM_ICONS[p.id]}</span>
+                    <span className="platform-opt-name">{p.name}</span>
+                  </button>
                 ))}
               </div>
             </SettingRow>
@@ -1945,6 +2006,20 @@ function getCSS() { return `
 .hist-total { font-size:22px; }
 .sparkline-card { padding:12px 14px; }
 }
+
+/* ── PLATFORM BADGE ── */
+.platform-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px 2px 4px; border-radius:20px; background:color-mix(in srgb, var(--p-color) 15%, transparent); color:var(--p-color); font-size:12px; font-weight:600; vertical-align:middle; line-height:1.3; }
+.platform-ico { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:4px; overflow:hidden; }
+.platform-ico svg { width:16px; height:16px; display:block; }
+
+/* ── PLATFORM PICKER ── */
+.platform-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; width:100%; }
+.platform-opt { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:10px; border:1.5px solid var(--border2); background:var(--surface); cursor:pointer; color:var(--text2); font-size:13px; font-weight:500; transition:border-color .15s,background .15s,color .15s; text-align:left; }
+.platform-opt:hover { border-color:var(--p-color); color:var(--text); background:color-mix(in srgb, var(--p-color) 8%, var(--surface)); }
+.platform-opt.active { border-color:var(--p-color); background:color-mix(in srgb, var(--p-color) 15%, var(--surface)); color:var(--p-color); font-weight:600; }
+.platform-opt-ico { width:22px; height:22px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:5px; overflow:hidden; }
+.platform-opt-ico svg { width:22px; height:22px; display:block; }
+.platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 /* ── PRINT ── */
 @media print {
