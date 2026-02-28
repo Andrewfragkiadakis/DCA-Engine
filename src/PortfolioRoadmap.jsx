@@ -47,6 +47,18 @@ const CAT_ICONS = {
   Crypto: "coins", Tech: "laptop", Dividend: "handDollar",
   ETF: "layers", Bond: "shield", Commodity: "star", Other: "barChart",
 };
+const OFFICIAL_TICKER_ICONS = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  NVDA: "nvidia",
+  AAPL: "apple",
+  MSFT: "microsoft",
+  KO: "coca_cola",
+  JNJ: "jnj",
+  SPY: "spy",
+  VWCE: "vwce",
+  VHYL: "vhyl",
+};
 const PLATFORMS = [
   { id: "trade-republic",      name: "Trade Republic",      color: "#0fba48" },
   { id: "interactive-brokers", name: "Interactive Brokers", color: "#e31837" },
@@ -73,14 +85,17 @@ const PLATFORMS = [
 
 // ─── SVG ICON LIBRARY ─────────────────────────────────────────
 const Icons = {
-  bitcoin:     <img src="https://cdn.worldvectorlogo.com/logos/bitcoin.svg" alt="BTC" style={{width:24, height:24, display:'block'}} />, 
-  ethereum:    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Ethereum-icon-purple.svg/1920px-Ethereum-icon-purple.svg.png" alt="ETH" style={{width:24, height:24, display:'block'}} />, 
-  nvidia:      <img src="https://cdn.worldvectorlogo.com/logos/nvidia.svg" alt="NVIDIA" style={{width:24, height:24, display:'block'}} loading="lazy" referrerPolicy="no-referrer" crossOrigin="anonymous"/>, 
-  coca_cola:   <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#E41B17"/><text x="12" y="16" fontSize="12" fontFamily="Arial,Helvetica,sans-serif" fontWeight="700" fill="#fff" textAnchor="middle">C</text></svg>,
-  jnj:         <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#b30000"/><text x="12" y="16" fontSize="10" fontFamily="Georgia,serif" fontWeight="700" fill="#fff" textAnchor="middle">J&amp;J</text></svg>,
+  bitcoin:     <img src="/icons/btc.svg" alt="Bitcoin" loading="lazy" decoding="async"/>,
+  ethereum:    <img src="/icons/eth.svg" alt="Ethereum" loading="lazy" decoding="async"/>,
+  nvidia:      <img src="/icons/nvda.svg" alt="NVIDIA" loading="lazy" decoding="async"/>,
+  apple:       <img src="/icons/aapl.svg" alt="Apple" loading="lazy" decoding="async"/>,
+  microsoft:   <img src="/icons/msft.svg" alt="Microsoft" loading="lazy" decoding="async"/>,
+  coca_cola:   <img src="/icons/ko.svg" alt="Coca-Cola" loading="lazy" decoding="async"/>,
+  jnj:         <img src="/icons/jnj.svg" alt="Johnson & Johnson" loading="lazy" decoding="async"/>,
+  spy:         <img src="/icons/spy.svg" alt="SPY (State Street)" loading="lazy" decoding="async"/>,
+  vwce:        <img src="/icons/vwce.svg" alt="VWCE (Vanguard)" loading="lazy" decoding="async"/>,
+  vhyl:        <img src="/icons/vhyl.svg" alt="VHYL (Vanguard)" loading="lazy" decoding="async"/>,
   microchip:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M7 9H4M7 12H4M7 15H4M17 9h3M17 12h3M17 15h3M9 7V4M12 7V4M15 7V4M9 17v3M12 17v3M15 17v3"/></svg>,
-  apple:       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>,
-  microsoft:   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/></svg>,
   circleDot:   <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3.5" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/></svg>,
   plus:        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>,
   chartPie:    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z" fill="currentColor" stroke="none"/></svg>,
@@ -264,14 +279,14 @@ function sanitizeAsset(a) {
 const DEFAULT_ASSETS = [
   { name:"BTC",            ticker:"BTC",  cat:"Crypto",   current:178,  target:11.5,  icon:"bitcoin"    },
   { name:"ETH",            ticker:"ETH",  cat:"Crypto",   current:87,   target:6.0,   icon:"ethereum"   },
-  { name:"NVIDIA",         ticker:"NVDA", cat:"Tech",     current:163,  target:6.67,  icon:"nvidia"  },
+  { name:"NVIDIA",         ticker:"NVDA", cat:"Tech",     current:163,  target:6.67,  icon:"nvidia"     },
   { name:"Apple",          ticker:"AAPL", cat:"Tech",     current:148,  target:6.67,  icon:"apple"      },
   { name:"Microsoft",      ticker:"MSFT", cat:"Tech",     current:118,  target:6.67,  icon:"microsoft"  },
   { name:"Coca-Cola",      ticker:"KO",   cat:"Dividend", current:239,  target:8.75,  icon:"coca_cola"  },
-  { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"jnj"       },
-  { name:"S&P 500 ETF",    ticker:"SPY",  cat:"ETF",      current:434,  target:18.0,  icon:"chartPie"   },
-  { name:"FTSE All World", ticker:"VWCE", cat:"ETF",      current:367,  target:15.0,  icon:"globe"      },
-  { name:"Hi Div ETF",     ticker:"VHYL", cat:"ETF",      current:249,  target:12.0,  icon:"handDollar" },
+  { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"jnj"        },
+  { name:"S&P 500 ETF",    ticker:"SPY",  cat:"ETF",      current:434,  target:18.0,  icon:"spy"        },
+  { name:"FTSE All World", ticker:"VWCE", cat:"ETF",      current:367,  target:15.0,  icon:"vwce"       },
+  { name:"Hi Div ETF",     ticker:"VHYL", cat:"ETF",      current:249,  target:12.0,  icon:"vhyl"       },
 ];
 const DEFAULT_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -308,7 +323,12 @@ function loadState() {
     if (p.schemaVersion !== SCHEMA_VERSION && p.schemaVersion !== 2 && p.schemaVersion !== 3) return null;
     if (!Array.isArray(p.assets) || p.assets.length === 0) return null;
     const seen = new Set();
-    const assets = p.assets.map(sanitizeAsset).filter(a => {
+    const assets = p.assets.map(sanitizeAsset).map(a => {
+      if (!a) return null;
+      const forcedIcon = OFFICIAL_TICKER_ICONS[a.ticker];
+      if (forcedIcon && Icons[forcedIcon]) return { ...a, icon: forcedIcon };
+      return a;
+    }).filter(a => {
       if (!a || seen.has(a.ticker)) return false;
       seen.add(a.ticker);
       return true;
@@ -2572,10 +2592,11 @@ function getCSS() { return `
 /* ── ICONS ── */
 .svg-icon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1; }
 .svg-icon svg { width:100%; height:100%; display:block; }
-.d-icon .svg-icon { width:15px; height:15px; }
-.d-icon.sm .svg-icon { width:13px; height:13px; }
-.buy-ico .svg-icon { width:19px; height:19px; }
-.h-ico .svg-icon { width:17px; height:17px; }
+.svg-icon img { width:100%; height:100%; display:block; object-fit:contain; transform:scale(1.08); filter:saturate(1.2) contrast(1.08); }
+.d-icon .svg-icon { width:20px; height:20px; }
+.d-icon.sm .svg-icon { width:18px; height:18px; }
+.buy-ico .svg-icon { width:22px; height:22px; }
+.h-ico .svg-icon { width:21px; height:21px; }
 .tab-ico { width:13px; height:13px; opacity:.8; }
 .safety-ico { width:22px; height:22px; flex-shrink:0; }
 .badge .svg-icon { width:10px; height:10px; }
