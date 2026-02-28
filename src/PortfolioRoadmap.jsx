@@ -28,11 +28,16 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef, Component } from "react";
+import { fetchLiveQuotes, fetchFxRates, buildLiveModel, pushLocalSnapshot, persistSnapshotRemote } from "./services/marketData";
+import { importBrokerCsv, fetchBrokerPositionsAdapter } from "./services/brokerImport";
 
 // ─── CONSTANTS ────────────────────────────────────────────────
-const SCHEMA_VERSION = 3;
-const STORE_KEY      = "portfolio_roadmap_v3";
+const SCHEMA_VERSION = 4;
+const STORE_KEY      = "portfolio_roadmap_v4";
+const LEGACY_STORE_KEY = "portfolio_roadmap_v3";
 const CURRENCIES     = ["€", "$", "£", "CHF"];
+const CURRENCY_TO_ISO = { "€":"EUR", "$":"USD", "£":"GBP", "CHF":"CHF" };
+const ISO_TO_CURRENCY = { EUR:"€", USD:"$", GBP:"£", CHF:"CHF" };
 const CATEGORIES     = ["Crypto", "Tech", "Dividend", "ETF", "Bond", "Commodity", "Other"];
 const CAT_COLORS     = {
   Crypto: "#FF9800", Tech: "#5C6BC0", Dividend: "#66BB6A",
@@ -246,17 +251,30 @@ const DEFAULT_STATE = {
   projectionMonths: 3,
   history: [],
   platform: "trade-republic",
+  live: {
+    enabled: false,
+    refreshSec: 60,
+    baselineTotal: null,
+    lastFetchedAt: null,
+    providerHealth: {},
+    unresolved: [],
+  },
+  alerts: {
+    enabled: true,
+    driftThreshold: 2,
+  },
+  priceSnapshots: [],
+  brokerImportLog: [],
 };
 
 // ─── STORAGE (versioned) ──────────────────────────────────────
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(STORE_KEY) || localStorage.getItem(LEGACY_STORE_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
     if (!p || typeof p !== "object") return null;
-    // Schema migration: accept v2 and v3, reject everything else
-    if (p.schemaVersion !== SCHEMA_VERSION && p.schemaVersion !== 2) return null;
+    if (p.schemaVersion !== SCHEMA_VERSION && p.schemaVersion !== 2 && p.schemaVersion !== 3) return null;
     if (!Array.isArray(p.assets) || p.assets.length === 0) return null;
     const seen = new Set();
     const assets = p.assets.map(sanitizeAsset).filter(a => {
@@ -276,6 +294,22 @@ function loadState() {
       history:          Array.isArray(p.history) ? p.history.slice(-120) : [],
       schemaVersion:    SCHEMA_VERSION,
       platform:         PLATFORMS.some(x => x.id === p.platform) ? p.platform : "trade-republic",
+      live: {
+        enabled: !!p?.live?.enabled,
+        refreshSec: sanitizeNum(p?.live?.refreshSec, 15, 300, 60),
+        baselineTotal: p?.live?.baselineTotal == null ? null : sanitizeNum(p.live.baselineTotal, 0, 100_000_000, 0),
+        lastFetchedAt: typeof p?.live?.lastFetchedAt === "string" ? p.live.lastFetchedAt : null,
+        providerHealth: p?.live?.providerHealth && typeof p.live.providerHealth === "object" ? p.live.providerHealth : {},
+        unresolved: Array.isArray(p?.live?.unresolved) ? p.live.unresolved.slice(0, 20) : [],
+        quoteData: p?.live?.quoteData && typeof p.live.quoteData === "object" ? p.live.quoteData : null,
+        fxData: p?.live?.fxData && typeof p.live.fxData === "object" ? p.live.fxData : null,
+      },
+      alerts: {
+        enabled: p?.alerts?.enabled !== false,
+        driftThreshold: sanitizeNum(p?.alerts?.driftThreshold, 0.5, 10, 2),
+      },
+      priceSnapshots: Array.isArray(p?.priceSnapshots) ? p.priceSnapshots.slice(-300) : [],
+      brokerImportLog: Array.isArray(p?.brokerImportLog) ? p.brokerImportLog.slice(-40) : [],
     };
   } catch { return null; }
 }
@@ -408,9 +442,14 @@ function App() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [activeTheme, setActiveTheme]   = useState(() => resolveTheme(loadState()?.theme || "auto"));
   const [dcaPickerOpen, setDcaPickerOpen] = useState(false);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState("");
+  const [brokerSource, setBrokerSource] = useState("trade-republic");
   const toastRef    = useRef(null);
   const fileInputRef = useRef(null);
+  const brokerFileInputRef = useRef(null);
   const tabTimerRef  = useRef(null);
+  const liveTimerRef = useRef(null);
 
   // Theme
   useEffect(() => {
@@ -485,6 +524,32 @@ function App() {
   const projMaxDrift = useMemo(() => Math.max(0, ...projection.finalPort.map(a => Math.abs(a.drift))), [projection.finalPort]);
   const projAligned  = useMemo(() => projection.finalPort.filter(a => Math.abs(a.drift) < 1).length, [projection.finalPort]);
   const cy = state.currency;
+  const isoCurrency = CURRENCY_TO_ISO[cy] || "USD";
+  const liveModel = useMemo(() => {
+    const quoteData = state?.live?.quoteData || null;
+    const fxData = state?.live?.fxData || null;
+    if (!quoteData || !fxData) return null;
+    return buildLiveModel({
+      assets: state.assets,
+      quotesData: quoteData,
+      fxData,
+      currency: isoCurrency,
+      baselineTotal: state?.live?.baselineTotal,
+    });
+  }, [state.assets, state?.live?.quoteData, state?.live?.fxData, state?.live?.baselineTotal, isoCurrency]);
+
+  const driftAlerts = useMemo(() => {
+    if (!state.alerts.enabled) return [];
+    const threshold = sanitizeNum(state.alerts.driftThreshold, 0.5, 10, 2);
+    const month1Buys = projection.steps[0]?.buys || [];
+    return enriched
+      .filter(a => Math.abs(a.drift) >= threshold)
+      .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift))
+      .map(a => {
+        const suggested = month1Buys.find(x => x.ticker === a.ticker)?.buy || 0;
+        return { ...a, suggestedBuy: suggested };
+      });
+  }, [enriched, projection.steps, state.alerts.enabled, state.alerts.driftThreshold]);
 
   // ── Handlers ──
   const updateAsset = useCallback((ticker, field, raw) => {
@@ -553,6 +618,147 @@ function App() {
     showToast("Platform updated");
   }, [showToast]);
 
+  const refreshLiveData = useCallback(async (opts = {}) => {
+    if (!state.assets.length) return;
+    const silent = !!opts.silent;
+    if (!silent) setLiveLoading(true);
+    setLiveError("");
+    try {
+      const [quotesData, fxData] = await Promise.all([
+        fetchLiveQuotes(state.assets),
+        fetchFxRates("USD"),
+      ]);
+      setState(s => {
+        const baseline = s?.live?.baselineTotal == null ? total : s.live.baselineTotal;
+        const livePatch = {
+          ...(s.live || {}),
+          enabled: true,
+          baselineTotal: baseline,
+          quoteData: quotesData,
+          fxData,
+          providerHealth: quotesData.providerHealth || {},
+          unresolved: quotesData.unresolved || [],
+          lastFetchedAt: quotesData.fetchedAt || new Date().toISOString(),
+        };
+
+        const model = buildLiveModel({
+          assets: s.assets,
+          quotesData,
+          fxData,
+          currency: CURRENCY_TO_ISO[s.currency] || "USD",
+          baselineTotal: baseline,
+        });
+
+        let priceSnapshots = s.priceSnapshots || [];
+        const nowMs = Date.now();
+        const lastSnapMs = new Date(priceSnapshots[priceSnapshots.length - 1]?.capturedAt || 0).getTime();
+        if (!lastSnapMs || nowMs - lastSnapMs >= 60 * 1000) {
+          const pushed = pushLocalSnapshot(priceSnapshots, model, s.currency);
+          priceSnapshots = pushed.list;
+          persistSnapshotRemote(pushed.snap).catch(() => null);
+        }
+
+        return { ...s, live: livePatch, priceSnapshots };
+      });
+      if (!silent) showToast("Live prices refreshed");
+    } catch (error) {
+      const msg = error?.message || "Failed to refresh live data";
+      setLiveError(msg);
+      if (!silent) showToast(msg, "error");
+    } finally {
+      if (!silent) setLiveLoading(false);
+    }
+  }, [state.assets, total, showToast]);
+
+  const toggleLiveTracking = useCallback((enabled) => {
+    setState(s => ({ ...s, live: { ...s.live, enabled } }));
+    if (enabled) refreshLiveData();
+  }, [refreshLiveData]);
+
+  const updateLiveRefreshSec = useCallback((v) => {
+    const refreshSec = sanitizeNum(v, 15, 300, 60);
+    setState(s => ({ ...s, live: { ...s.live, refreshSec } }));
+  }, []);
+
+  const handleBrokerImport = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = importBrokerCsv(String(ev.target?.result || ""), brokerSource);
+        if (!parsed.assets.length) {
+          showToast("No valid positions found in CSV", "error");
+          return;
+        }
+        setState(s => {
+          const merged = [...s.assets];
+          for (const row of parsed.assets) {
+            const idx = merged.findIndex(a => a.ticker === row.ticker);
+            if (idx >= 0) {
+              merged[idx] = {
+                ...merged[idx],
+                name: row.name || merged[idx].name,
+                cat: CATEGORIES.includes(row.cat) ? row.cat : merged[idx].cat,
+                current: sanitizeNum(row.current, 0, 10_000_000, merged[idx].current),
+                target: row.target > 0 ? sanitizeNum(row.target, 0, 100, merged[idx].target) : merged[idx].target,
+              };
+            } else {
+              merged.push({
+                name: sanitizeStr(row.name || row.ticker, 40),
+                ticker: row.ticker,
+                cat: CATEGORIES.includes(row.cat) ? row.cat : "Other",
+                current: sanitizeNum(row.current, 0, 10_000_000, 0),
+                target: sanitizeNum(row.target, 0, 100, 0),
+                icon: "barChart",
+              });
+            }
+          }
+          const logEntry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            importedAt: new Date().toISOString(),
+            source: brokerSource,
+            importedRows: parsed.importedRows,
+            totalRows: parsed.totalRows,
+            fileName: file.name,
+          };
+          return { ...s, assets: merged, brokerImportLog: [...(s.brokerImportLog || []), logEntry].slice(-40) };
+        });
+        showToast(`Imported ${parsed.importedRows} positions from ${brokerSource}`);
+      } catch (error) {
+        showToast(`Broker CSV import failed: ${error?.message || "Unknown error"}`, "error");
+      }
+    };
+    reader.onerror = () => showToast("Could not read CSV file", "error");
+    reader.readAsText(file);
+  }, [brokerSource, showToast]);
+
+  const testBrokerApiAdapter = useCallback(async () => {
+    const result = await fetchBrokerPositionsAdapter(brokerSource, {});
+    if (result.ok) showToast("Broker API adapter is connected");
+    else showToast(result.hint || result.error || "Broker API adapter unavailable", "info");
+  }, [brokerSource, showToast]);
+
+  useEffect(() => {
+    if (!state?.live?.enabled) {
+      if (liveTimerRef.current) {
+        clearInterval(liveTimerRef.current);
+        liveTimerRef.current = null;
+      }
+      return;
+    }
+    const refreshMs = sanitizeNum(state?.live?.refreshSec, 15, 300, 60) * 1000;
+    if (liveTimerRef.current) clearInterval(liveTimerRef.current);
+    liveTimerRef.current = setInterval(() => refreshLiveData({ silent: true }), refreshMs);
+    return () => {
+      if (liveTimerRef.current) {
+        clearInterval(liveTimerRef.current);
+        liveTimerRef.current = null;
+      }
+    };
+  }, [state?.live?.enabled, state?.live?.refreshSec, refreshLiveData]);
+
   const doLockMonth = useCallback((note = "") => {
     const step = projection.steps[0];
     if (!step) return;
@@ -591,9 +797,9 @@ function App() {
         const raw = ev.target.result;
         const parsed = JSON.parse(raw);
         if (typeof parsed !== "object" || parsed === null) throw new Error("Not an object");
-        // Accept v2 and v3 backups
-        if (parsed.schemaVersion !== SCHEMA_VERSION && parsed.schemaVersion !== 2) {
-          showToast("Incompatible backup version (expected v2 or v3).", "error");
+        // Accept v2, v3 and v4 backups
+        if (parsed.schemaVersion !== SCHEMA_VERSION && parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) {
+          showToast("Incompatible backup version (expected v2, v3 or v4).", "error");
           return;
         }
         if (!Array.isArray(parsed.assets) || parsed.assets.length === 0) {
@@ -619,6 +825,22 @@ function App() {
           history:          Array.isArray(parsed.history) ? parsed.history.slice(-120) : [],
           schemaVersion:    SCHEMA_VERSION,
           platform:         PLATFORMS.some(x => x.id === parsed.platform) ? parsed.platform : "trade-republic",
+          live: {
+            enabled: !!parsed?.live?.enabled,
+            refreshSec: sanitizeNum(parsed?.live?.refreshSec, 15, 300, 60),
+            baselineTotal: parsed?.live?.baselineTotal == null ? null : sanitizeNum(parsed.live.baselineTotal, 0, 100_000_000, 0),
+            lastFetchedAt: typeof parsed?.live?.lastFetchedAt === "string" ? parsed.live.lastFetchedAt : null,
+            providerHealth: parsed?.live?.providerHealth && typeof parsed.live.providerHealth === "object" ? parsed.live.providerHealth : {},
+            unresolved: Array.isArray(parsed?.live?.unresolved) ? parsed.live.unresolved.slice(0, 20) : [],
+            quoteData: parsed?.live?.quoteData && typeof parsed.live.quoteData === "object" ? parsed.live.quoteData : null,
+            fxData: parsed?.live?.fxData && typeof parsed.live.fxData === "object" ? parsed.live.fxData : null,
+          },
+          alerts: {
+            enabled: parsed?.alerts?.enabled !== false,
+            driftThreshold: sanitizeNum(parsed?.alerts?.driftThreshold, 0.5, 10, 2),
+          },
+          priceSnapshots: Array.isArray(parsed?.priceSnapshots) ? parsed.priceSnapshots.slice(-300) : [],
+          brokerImportLog: Array.isArray(parsed?.brokerImportLog) ? parsed.brokerImportLog.slice(-40) : [],
           assets,
         });
         showToast(`Portfolio imported — ${assets.length} assets loaded.`);
@@ -643,6 +865,7 @@ function App() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
       <div className="pr-glow g1" aria-hidden="true"/><div className="pr-glow g2" aria-hidden="true"/>
       <input ref={fileInputRef} type="file" accept=".json" style={{ display:"none" }} onChange={handleImport} aria-hidden="true"/>
+      <input ref={brokerFileInputRef} type="file" accept=".csv,text/csv" style={{ display:"none" }} onChange={handleBrokerImport} aria-hidden="true"/>
 
       {toast && (
         <div className={`toast toast-${toast.type || "success"}`} role="alert" aria-live="assertive">
@@ -758,6 +981,15 @@ function App() {
               onUpdateCurrent={(ticker, val) => { updateAsset(ticker, "current", val); showToast(`${ticker} updated`); }}
               assets={state.assets}
               platformId={state.platform}
+              liveEnabled={state.live.enabled}
+              liveRefreshSec={state.live.refreshSec}
+              liveLoading={liveLoading}
+              liveError={liveError}
+              liveModel={liveModel}
+              onToggleLive={toggleLiveTracking}
+              onRefreshLive={refreshLiveData}
+              onUpdateLiveRefresh={updateLiveRefreshSec}
+              driftAlerts={driftAlerts}
             />
           )}
           {displayedTab >= 1 && displayedTab <= projection.steps.length && (
@@ -787,7 +1019,7 @@ function App() {
             />
           )}
           {displayedTab === projection.steps.length + 2 && (
-            <HistoryTab history={state.history} cy={cy}/>
+            <HistoryTab history={state.history} cy={cy} priceSnapshots={state.priceSnapshots}/>
           )}
         </div>
           </div>{/* content-wrap */}
@@ -811,11 +1043,24 @@ function App() {
           onExportJSON={() => { exportJSON(state); showToast("JSON backup downloaded."); }}
           onExportCSV={() => { exportCSV(state.assets, cy); showToast("CSV downloaded."); }}
           onImport={() => fileInputRef.current?.click()}
+          onImportBrokerCsv={() => brokerFileInputRef.current?.click()}
+          brokerSource={brokerSource}
+          onBrokerSourceChange={setBrokerSource}
+          onTestBrokerApi={testBrokerApiAdapter}
           onReset={() => { setSettingsOpen(false); setConfirmReset(true); }}
           targetSum={targetSum}
           targetOk={targetOk}
           showToast={showToast}
           total={total}
+          liveEnabled={state.live.enabled}
+          onToggleLive={toggleLiveTracking}
+          liveRefreshSec={state.live.refreshSec}
+          onUpdateLiveRefresh={updateLiveRefreshSec}
+          driftThreshold={state.alerts.driftThreshold}
+          onUpdateDriftThreshold={(v) => setState(s => ({ ...s, alerts: { ...s.alerts, driftThreshold: sanitizeNum(v, 0.5, 10, 2) } }))}
+          alertsEnabled={state.alerts.enabled}
+          onToggleAlerts={(enabled) => setState(s => ({ ...s, alerts: { ...s.alerts, enabled } }))}
+          brokerImportLog={state.brokerImportLog}
         />
       )}
 
@@ -893,7 +1138,7 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────
-function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId }) {
+function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId, liveEnabled, liveRefreshSec, liveLoading, liveError, liveModel, onToggleLive, onRefreshLive, onUpdateLiveRefresh, driftAlerts }) {
   const [localVals, setLocalVals] = useState({});
 
   useEffect(() => {
@@ -916,6 +1161,90 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
 
   return (
     <>
+      <Sh title="Live Tracking" subtitle="Realtime PnL, quote health, and drift alerts"/>
+      <div className="live-panel">
+        <div className="live-top-row">
+          <label className="live-toggle">
+            <input type="checkbox" checked={liveEnabled} onChange={e => onToggleLive(e.target.checked)} />
+            <span>Live tracking</span>
+          </label>
+          <div className="live-controls">
+            <span className="live-label">Refresh</span>
+            <input
+              className="live-refresh-inp mono"
+              type="number"
+              min="15"
+              max="300"
+              step="5"
+              value={liveRefreshSec}
+              onChange={e => onUpdateLiveRefresh(e.target.value)}
+              aria-label="Live refresh interval seconds"
+            />
+            <span className="live-label">sec</span>
+            <button className="btn-ghost sm" onClick={() => onRefreshLive()} disabled={liveLoading || !liveEnabled}>
+              <Icon name="refresh" style={{ width:12, height:12 }}/>{liveLoading ? "Refreshing" : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        {liveError && <div className="live-error">{liveError}</div>}
+
+        {liveEnabled && liveModel && (
+          <>
+            <div className="live-meta mono">
+              Sources: {Object.entries(liveModel.providerHealth || {}).filter(([, v]) => v === "ok").map(([k]) => k).join(", ") || "none"}
+              {liveModel.unresolved?.length ? ` · Unresolved: ${liveModel.unresolved.length}` : ""}
+            </div>
+            <div className="live-kpis">
+              <div className="live-kpi">
+                <span>Live Value</span>
+                <strong className="mono">{cy}{Math.round(liveModel.totalLive).toLocaleString()}</strong>
+              </div>
+              <div className="live-kpi">
+                <span>Daily PnL</span>
+                <strong className="mono" style={{ color: liveModel.dailyPnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                  {liveModel.dailyPnl >= 0 ? "+" : ""}{cy}{Math.round(liveModel.dailyPnl).toLocaleString()} ({liveModel.dailyPnlPct.toFixed(2)}%)
+                </strong>
+              </div>
+              <div className="live-kpi">
+                <span>Total Return</span>
+                <strong className="mono" style={{ color: liveModel.totalReturn >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                  {liveModel.totalReturn >= 0 ? "+" : ""}{cy}{Math.round(liveModel.totalReturn).toLocaleString()} ({liveModel.totalReturnPct.toFixed(2)}%)
+                </strong>
+              </div>
+            </div>
+
+            <div className="live-contrib-list">
+              {liveModel.contributions.slice(0, 4).map(c => (
+                <div key={c.ticker} className="live-contrib-row">
+                  <span>{c.ticker}</span>
+                  <span className="mono" style={{ color: c.dailyPnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                    {c.dailyPnl >= 0 ? "+" : ""}{cy}{Math.round(c.dailyPnl)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {!!driftAlerts.length && (
+        <div className="smart-alerts" role="alert">
+          <div className="smart-alert-title">
+            <Icon name="warning" style={{ width:14, height:14, color:"var(--accent-amber)" }}/>Smart Drift Alerts
+          </div>
+          <div className="smart-alert-list">
+            {driftAlerts.slice(0, 6).map(a => (
+              <div className="smart-alert-row" key={a.ticker}>
+                <span className="mono">{a.ticker}</span>
+                <span>Drift {a.drift > 0 ? "+" : ""}{a.drift.toFixed(2)}%</span>
+                <span className="mono">Suggest buy: {a.suggestedBuy > 0 ? `${cy}${a.suggestedBuy}` : "pause buys"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Category breakdown — high-level view first */}
       <Sh title="Category Breakdown" subtitle="Actual vs target allocation by asset class"/>
       <div className="cat-grid">
@@ -1274,8 +1603,8 @@ function HealthTab({ finalPort, finalTotal, avgDrift, maxDrift, aligned, cy, mon
 }
 
 // ─── HISTORY TAB ──────────────────────────────────────────────
-function HistoryTab({ history, cy }) {
-  if (history.length === 0) {
+function HistoryTab({ history, cy, priceSnapshots = [] }) {
+  if (history.length === 0 && priceSnapshots.length === 0) {
     return (
       <div className="empty-state" style={{ marginTop:56 }}>
         <Icon name="history" style={{ width:44, height:44, color:"var(--text3)", marginBottom:14 }}/>
@@ -1288,10 +1617,36 @@ function HistoryTab({ history, cy }) {
   const totals = history.map(h => h.total);
   const minT   = Math.min(...totals);
   const maxT   = Math.max(...totals);
+  const liveTotals = priceSnapshots.map(s => s.totalValue);
+  const liveMin = liveTotals.length ? Math.min(...liveTotals) : 0;
+  const liveMax = liveTotals.length ? Math.max(...liveTotals) : 0;
 
   return (
     <>
       <Sh title="Monthly History" subtitle={`${history.length} month${history.length !== 1 ? "s" : ""} tracked`}/>
+
+      {priceSnapshots.length >= 2 && (
+        <div className="sparkline-card">
+          <div className="spark-label">Live Tracking Trend</div>
+          <svg className="sparkline" viewBox={`0 0 ${priceSnapshots.length * 24} 60`} preserveAspectRatio="none" aria-label="Live value trend">
+            <polyline
+              fill="none"
+              stroke="var(--accent-blue)"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              points={liveTotals.map((t, i) => {
+                const x = i * 24 + 10;
+                const y = liveMax === liveMin ? 30 : 55 - ((t - liveMin) / (liveMax - liveMin)) * 50;
+                return `${x},${y}`;
+              }).join(" ")}
+            />
+          </svg>
+          <div className="spark-range">
+            <span className="mono">{cy}{Math.round(liveMin).toLocaleString()}</span>
+            <span className="mono">{cy}{Math.round(liveMax).toLocaleString()}</span>
+          </div>
+        </div>
+      )}
 
       {history.length >= 2 && (
         <div className="sparkline-card">
@@ -1413,7 +1768,7 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onReset, targetSum, targetOk, showToast }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, brokerSource, onBrokerSourceChange, onTestBrokerApi, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [] }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
@@ -1542,6 +1897,41 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Automation */}
+            <div className="settings-group">
+              <div className="settings-group-label">Automation</div>
+              <div className="settings-card">
+                <SettingRow title="Live Tracking" desc="Fetch live quotes from proxy providers and update PnL automatically">
+                  <button className={`seg-btn ${liveEnabled ? "active" : ""}`} onClick={() => onToggleLive(!liveEnabled)}>
+                    <Icon name="refresh" style={{ width:12, height:12 }}/>{liveEnabled ? "Enabled" : "Disabled"}
+                  </button>
+                </SettingRow>
+                <SettingDivider/>
+                <SettingRow title="Refresh Interval" desc="Polling frequency for live quotes (15–300 sec)">
+                  <div className="editor-inp-wrap">
+                    <input className="editor-inp mono" type="number" min="15" max="300" step="5"
+                      value={liveRefreshSec}
+                      onChange={e => onUpdateLiveRefresh(e.target.value)}
+                      style={{ width:64 }} aria-label="Live refresh interval seconds"/>
+                    <span className="editor-sym">sec</span>
+                  </div>
+                </SettingRow>
+                <SettingDivider/>
+                <SettingRow title="Smart Drift Alerts" desc="Trigger alerts when absolute drift crosses threshold">
+                  <div className="editor-inp-wrap">
+                    <button className={`seg-btn ${alertsEnabled ? "active" : ""}`} onClick={() => onToggleAlerts(!alertsEnabled)}>
+                      {alertsEnabled ? "On" : "Off"}
+                    </button>
+                    <input className="editor-inp mono" type="number" min="0.5" max="10" step="0.1"
+                      value={driftThreshold}
+                      onChange={e => onUpdateDriftThreshold(e.target.value)}
+                      style={{ width:56 }} aria-label="Drift threshold percentage"/>
+                    <span className="editor-sym">%</span>
+                  </div>
+                </SettingRow>
               </div>
             </div>
 
@@ -1735,7 +2125,7 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                 <div className="data-action-row">
                   <div className="data-action-info">
                     <div className="setting-title">Restore Backup</div>
-                    <div className="setting-desc">Import a previously exported JSON file (v2 or v3)</div>
+                    <div className="setting-desc">Import a previously exported JSON file (v2, v3 or v4)</div>
                   </div>
                   <button className="btn-ghost" onClick={onImport}>
                     <Icon name="upload" style={{ width:14, height:14 }}/>Import
@@ -1744,9 +2134,57 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
               </div>
             </div>
 
+            <div className="settings-group" style={{ marginTop:20 }}>
+              <div className="settings-group-label">Broker Sync</div>
+              <div className="settings-card">
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">Broker Source</div>
+                    <div className="setting-desc">Choose parser profile for CSV auto-mapping</div>
+                  </div>
+                  <select className="asset-select" value={brokerSource} onChange={e => onBrokerSourceChange(e.target.value)} aria-label="Broker source">
+                    <option value="trade-republic">Trade Republic</option>
+                    <option value="interactive-brokers">Interactive Brokers (IBKR)</option>
+                    <option value="generic">Generic CSV</option>
+                  </select>
+                </div>
+                <SettingDivider/>
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">Import Positions CSV</div>
+                    <div className="setting-desc">Merge current values and add unknown assets from broker exports</div>
+                  </div>
+                  <button className="btn-ghost" onClick={onImportBrokerCsv}>
+                    <Icon name="upload" style={{ width:14, height:14 }}/>Import CSV
+                  </button>
+                </div>
+                <SettingDivider/>
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">API Adapter Check</div>
+                    <div className="setting-desc">Scaffold for secure broker API integration via backend token exchange</div>
+                  </div>
+                  <button className="btn-ghost" onClick={onTestBrokerApi}>
+                    <Icon name="refresh" style={{ width:14, height:14 }}/>Test Adapter
+                  </button>
+                </div>
+              </div>
+              {brokerImportLog.length > 0 && (
+                <div className="broker-log-list">
+                  {[...brokerImportLog].slice(-5).reverse().map(item => (
+                    <div className="broker-log-row" key={item.id}>
+                      <span>{item.source}</span>
+                      <span className="mono">{item.importedRows}/{item.totalRows}</span>
+                      <span className="mono">{new Date(item.importedAt).toLocaleDateString("en-GB")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="data-footer-note">
               <Icon name="info" style={{ width:13, height:13, flexShrink:0, marginTop:1 }}/>
-              <span>All data lives in your browser's local storage. Nothing is sent to any server. <strong>Export regularly</strong> to avoid data loss.</span>
+              <span>Live quotes are fetched through your serverless proxy to protect API keys. Portfolio data still stays local by default. <strong>Export regularly</strong> to avoid data loss.</span>
             </div>
           </div>
         )}
@@ -2344,6 +2782,36 @@ function getCSS() { return `
 .hist-asset-bought { border-color:rgba(16,185,129,.22); background:rgba(16,185,129,.04); }
 .hist-ticker { font-size:12px; font-weight:700; color:var(--text2); flex:1; }
 .hist-val { font-size:12px; color:var(--text); }
+
+/* ── LIVE TRACKING / ALERTS ── */
+.live-panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:16px; display:flex; flex-direction:column; gap:10px; }
+.live-top-row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.live-toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--text2); }
+.live-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.live-label { font-size:12px; color:var(--text3); }
+.live-refresh-inp { width:58px; border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text); padding:5px 8px; }
+.live-error { font-size:12px; color:var(--accent-red); background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.25); border-radius:9px; padding:7px 9px; }
+.live-meta { font-size:11px; color:var(--text4); }
+.live-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.live-kpi { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px; display:flex; flex-direction:column; gap:4px; }
+.live-kpi span { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.7px; }
+.live-kpi strong { font-size:14px; color:var(--text); line-height:1.35; }
+.live-contrib-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+.live-contrib-row { background:var(--surface2); border:1px solid var(--border); border-radius:9px; padding:7px 9px; display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text2); }
+.smart-alerts { margin-bottom:18px; background:rgba(245,158,11,.07); border:1px solid rgba(245,158,11,.26); border-radius:12px; padding:12px; }
+.smart-alert-title { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; }
+.smart-alert-list { display:flex; flex-direction:column; gap:6px; }
+.smart-alert-row { display:grid; grid-template-columns:64px 1fr auto; gap:8px; align-items:center; font-size:12px; color:var(--text2); background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:8px; padding:6px 8px; }
+@media (max-width:760px) {
+  .live-kpis { grid-template-columns:1fr; }
+  .live-contrib-list { grid-template-columns:1fr; }
+  .smart-alert-row { grid-template-columns:60px 1fr; }
+  .smart-alert-row span:last-child { grid-column:1/-1; }
+}
+
+/* ── BROKER IMPORT LOG ── */
+.broker-log-list { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+.broker-log-row { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:12px; color:var(--text3); }
 
 /* ══════════════════════════════════════════════
    MODAL SHELL
