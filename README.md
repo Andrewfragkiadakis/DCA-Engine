@@ -6,10 +6,11 @@
 ![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)
 ![Vite](https://img.shields.io/badge/Vite-5-646cff?style=flat-square&logo=vite)
 ![Zero Backend](https://img.shields.io/badge/Backend-None-gray?style=flat-square)
+![License: MIT](https://img.shields.io/badge/License-MIT-0ea5e9?style=flat-square)
 
 ---
 
-![DCA Engine Dashboard](https://dca-engine.vercel.app/og-image.svg)
+![DCA Engine Dashboard](public/og-image.svg)
 
 ---
 
@@ -37,8 +38,6 @@ npm run build    # production build → dist/
 npm run preview  # preview production build
 ```
 
-Deploy on [Vercel](https://vercel.com) — auto-detects Vite, zero config needed.
-
 ## Stack
 
 | Layer | Technology |
@@ -65,4 +64,6 @@ vercel.json              # security headers + SPA rewrites
 
 ## License
 
-MIT — Andrew Fragkiadakis
+Licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Andrew Fragkiadakis

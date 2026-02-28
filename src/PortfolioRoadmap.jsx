@@ -52,6 +52,17 @@ const PLATFORMS = [
   { id: "coinbase",            name: "Coinbase",            color: "#0052ff" },
   { id: "binance",             name: "Binance",             color: "#f3ba2f" },
   { id: "scalable",            name: "Scalable Capital",    color: "#6c3af5" },
+  { id: "freedom24",           name: "Freedom24",           color: "#ff6b00" },
+  { id: "fidelity",            name: "Fidelity",            color: "#198c19" },
+  { id: "schwab",              name: "Schwab",              color: "#00a0dc" },
+  { id: "vanguard",            name: "Vanguard",            color: "#a61717" },
+  { id: "webull",              name: "Webull",              color: "#02adb4" },
+  { id: "freetrade",           name: "Freetrade",           color: "#00d5af" },
+  { id: "saxo",                name: "Saxo Bank",           color: "#1e3a5f" },
+  { id: "ig",                  name: "IG",                  color: "#0075c4" },
+  { id: "xtb",                 name: "XTB",                 color: "#e8001c" },
+  { id: "kraken",              name: "Kraken",              color: "#5741d9" },
+  { id: "bitpanda",            name: "Bitpanda",            color: "#e5304a" },
   { id: "other",               name: "Other",               color: "#78909c" },
 ];
 
@@ -105,16 +116,28 @@ const Icons = {
   target:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="22" y1="12" x2="15" y2="12"/><line x1="9" y1="12" x2="2" y2="12"/></svg>,
   refresh:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
 };
+const FAVICON = d => `https://www.google.com/s2/favicons?domain=${d}&sz=64`;
 const PLATFORM_ICONS = {
-  "trade-republic":      <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#0fba48"/><path d="M7 12l3.5 3.5L17 8" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  "interactive-brokers": <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#e31837"/><path d="M8 7v10M16 7v10M8 12h8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/></svg>,
-  "revolut":             <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="12" fill="#191c4b"/><path d="M9 7h3.5c2 0 3.5 1.2 3.5 3s-1.5 3-3.5 3H9V7zM9 13l4 4" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  "etoro":               <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#11a65c"/><circle cx="12" cy="9" r="3" fill="#fff"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>,
-  "degiro":              <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#004990"/><circle cx="12" cy="13" r="4" stroke="#fff" strokeWidth="1.8"/><rect x="11" y="5" width="2" height="4" rx="1" fill="#fff"/></svg>,
-  "robinhood":           <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="12" fill="#00c805"/><path d="M12 17V8M8 11l4-4 4 4" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  "coinbase":            <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#0052ff"/><circle cx="12" cy="12" r="6" fill="#fff"/><path d="M14.5 9.5a3 3 0 0 0-5 2.5 3 3 0 0 0 5 2.5" stroke="#0052ff" strokeWidth="1.8" strokeLinecap="round"/></svg>,
-  "binance":             <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#1a1a2e"/><path d="M12 5l2 2-2 2-2-2 2-2zM5 12l2-2 2 2-2 2-2-2zM19 12l-2-2-2 2 2 2 2-2zM12 19l-2-2 2-2 2 2-2 2zM10.5 12l1.5-1.5 1.5 1.5-1.5 1.5-1.5-1.5z" fill="#f3ba2f"/></svg>,
-  "scalable":            <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#6c3af5"/><rect x="5" y="15" width="3" height="4" rx="1" fill="#fff"/><rect x="10.5" y="11" width="3" height="8" rx="1" fill="#fff"/><rect x="16" y="7" width="3" height="12" rx="1" fill="#fff"/></svg>,
+  "trade-republic":      <img src={FAVICON("traderepublic.com")} alt="" />,
+  "interactive-brokers": <img src={FAVICON("interactivebrokers.com")} alt="" />,
+  "revolut":             <img src={FAVICON("revolut.com")} alt="" />,
+  "etoro":               <img src={FAVICON("etoro.com")} alt="" />,
+  "degiro":              <img src={FAVICON("degiro.eu")} alt="" />,
+  "robinhood":           <img src={FAVICON("robinhood.com")} alt="" />,
+  "coinbase":            <img src={FAVICON("coinbase.com")} alt="" />,
+  "binance":             <img src={FAVICON("binance.com")} alt="" />,
+  "scalable":            <img src={FAVICON("scalable.capital")} alt="" />,
+  "freedom24":           <img src={FAVICON("freedom24.com")} alt="" />,
+  "fidelity":            <img src={FAVICON("fidelity.com")} alt="" />,
+  "schwab":              <img src={FAVICON("schwab.com")} alt="" />,
+  "vanguard":            <img src={FAVICON("vanguard.com")} alt="" />,
+  "webull":              <img src={FAVICON("webull.com")} alt="" />,
+  "freetrade":           <img src={FAVICON("freetrade.io")} alt="" />,
+  "saxo":                <img src={FAVICON("home.saxo")} alt="" />,
+  "ig":                  <img src={FAVICON("ig.com")} alt="" />,
+  "xtb":                 <img src={FAVICON("xtb.com")} alt="" />,
+  "kraken":              <img src={FAVICON("kraken.com")} alt="" />,
+  "bitpanda":            <img src={FAVICON("bitpanda.com")} alt="" />,
   "other":               <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="6" fill="#78909c"/><circle cx="8" cy="12" r="1.5" fill="#fff"/><circle cx="12" cy="12" r="1.5" fill="#fff"/><circle cx="16" cy="12" r="1.5" fill="#fff"/></svg>,
 };
 
@@ -374,23 +397,30 @@ export default function PortfolioRoadmap() {
 function App() {
   const [state, setState]       = useState(() => loadState() || { ...DEFAULT_STATE, assets: DEFAULT_ASSETS.map(a => ({ ...a })) });
   const [tab, setTab]           = useState(0);
+  const [displayedTab, setDisplayedTab] = useState(0);
+  const [tabTransit, setTabTransit]     = useState(false);
   const [loaded, setLoaded]     = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [cmdOpen, setCmdOpen]   = useState(false);
   const [toast, setToast]       = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmLock, setConfirmLock]   = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [activeTheme, setActiveTheme]   = useState(() => resolveTheme(loadState()?.theme || "auto"));
-  const [editingDca, setEditingDca]     = useState(false);
-  const [dcaDraft, setDcaDraft]         = useState(String(state.dca));
+  const [dcaPickerOpen, setDcaPickerOpen] = useState(false);
   const toastRef    = useRef(null);
   const fileInputRef = useRef(null);
+  const tabTimerRef  = useRef(null);
 
   // Theme
   useEffect(() => {
+    const prEl = document.querySelector('.pr');
+    prEl?.classList.add('theme-transitioning');
     const t = resolveTheme(state.theme);
     setActiveTheme(t);
     document.documentElement.setAttribute("data-theme", t);
+    const timer = setTimeout(() => prEl?.classList.remove('theme-transitioning'), 400);
+    return () => clearTimeout(timer);
   }, [state.theme]);
   useEffect(() => {
     if (state.theme !== "auto") return;
@@ -408,10 +438,23 @@ function App() {
   useEffect(() => { setTimeout(() => setLoaded(true), 80); }, []);
   useEffect(() => { saveState(state); }, [state]);
 
+  // Tab switching with transition
+  const switchTab = useCallback((newTab) => {
+    if (newTab === tab) return;
+    setTab(newTab);
+    setTabTransit(true);
+    if (tabTimerRef.current) clearTimeout(tabTimerRef.current);
+    tabTimerRef.current = setTimeout(() => {
+      setDisplayedTab(newTab);
+      setTabTransit(false);
+    }, 150);
+  }, [tab]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const h = (e) => {
-      if (e.key === "Escape") { setSettingsOpen(false); setConfirmLock(false); setConfirmReset(false); setEditingDca(false); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen(v => !v); }
+      if (e.key === "Escape") { setSettingsOpen(false); setConfirmLock(false); setConfirmReset(false); setDcaPickerOpen(false); setCmdOpen(false); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -467,14 +510,13 @@ function App() {
   const updateDca = useCallback((v) => {
     const n = sanitizeNum(v, 1, 1_000_000, state.dca);
     setState(s => ({ ...s, dca: n }));
-    setDcaDraft(String(n));
   }, [state.dca]);
 
-  const commitDca = useCallback(() => {
-    updateDca(dcaDraft);
-    setEditingDca(false);
+  const applyDcaFromPicker = useCallback((v) => {
+    updateDca(v);
+    setDcaPickerOpen(false);
     showToast("DCA updated");
-  }, [dcaDraft, updateDca, showToast]);
+  }, [updateDca, showToast]);
 
   const normalizeTargets = useCallback(() => {
     setState(s => {
@@ -622,27 +664,11 @@ function App() {
               <div className="hdr-sub-row">
                 <span className="hdr-sub">{state.assets.length} assets · Buy-only · <PlatformBadge platformId={state.platform}/></span>
                 <span className="hdr-sep">·</span>
-                {editingDca ? (
-                  <form className="dca-edit-form" onSubmit={e => { e.preventDefault(); commitDca(); }}>
-                    <span className="dca-sym">{cy}</span>
-                    <input
-                      className="dca-input mono"
-                      type="number" min="1" max="99999" step="10"
-                      value={dcaDraft}
-                      onChange={e => setDcaDraft(e.target.value)}
-                      onBlur={commitDca}
-                      autoFocus
-                      aria-label="Monthly DCA amount"
-                    />
-                    <span className="hdr-sub">/mo</span>
-                  </form>
-                ) : (
-                  <button className="dca-pill" onClick={() => { setEditingDca(true); setDcaDraft(String(state.dca)); }} title="Click to edit DCA amount">
-                    <Icon name="zap" style={{ width:12, height:12 }}/>
-                    <span className="mono">{cy}{state.dca}/mo</span>
-                    <Icon name="edit" style={{ width:10, height:10, opacity:0.5 }}/>
-                  </button>
-                )}
+                <button className="dca-pill" onClick={() => setDcaPickerOpen(true)} title="Open DCA editor">
+                  <Icon name="zap" style={{ width:12, height:12 }}/>
+                  <span className="mono">{cy}{state.dca}/mo</span>
+                  <Icon name="edit" style={{ width:10, height:10, opacity:0.5 }}/>
+                </button>
               </div>
             </div>
             <div className="hdr-actions">
@@ -655,23 +681,44 @@ function App() {
         </header>
 
         {/* ── KPIs ── */}
-        <div className={`kpi-grid ${loaded ? "in" : ""}`} role="region" aria-label="Portfolio summary">
-          {[
-            { l:"Portfolio",          v:`${cy}${Math.round(total).toLocaleString()}`,                  s:"Current value",   c:"var(--accent-blue)",   icon:"wallet"   },
-            { l:"Monthly DCA",        v:`${cy}${state.dca}`,                                           s:"Per contribution",c:"var(--accent-indigo)", icon:"zap"      },
-            { l:`${state.projectionMonths}-Mo Target`, v:`${cy}${Math.round(projection.finalTotal).toLocaleString()}`, s:`+${cy}${(state.dca * state.projectionMonths).toLocaleString()}`, c:"var(--accent-green)", icon:"trendUp" },
-            { l:"Proj. Drift",        v:`${projAvgDrift.toFixed(1)}%`,                                s:`Avg abs · ${state.projectionMonths}mo`, c: projAvgDrift<1?"var(--accent-green)":projAvgDrift<2.5?"var(--accent-amber)":"var(--accent-red)", icon:"sliders" },
-          ].map((k, i) => (
-            <div key={i} className="kpi">
-              <div className="kpi-header">
-                <div className="kpi-l">{k.l}</div>
-                <Icon name={k.icon} style={{ color:k.c, opacity:0.5, width:14, height:14 }}/>
-              </div>
-              <div className="kpi-v mono" style={{ color:k.c }}>{k.v}</div>
-              <div className="kpi-s">{k.s}</div>
+        {(() => {
+          const histTotals = state.history.map(h => h.total);
+          const kpiRings = [
+            Math.min(100, Math.max(0, 100 - projAvgDrift * 15)),
+            100,
+            Math.min(100, (state.projectionMonths / 12) * 100),
+            Math.max(0, 100 - projAvgDrift * 18),
+          ];
+          const kpiSparks = [
+            histTotals.length >= 2 ? histTotals.slice(-8) : null,
+            null,
+            null,
+            histTotals.length >= 2 ? histTotals.map((_, i, arr) => {
+              const step = projection.steps[Math.min(i, projection.steps.length - 1)];
+              return step ? step.total : arr[i];
+            }).slice(-8) : null,
+          ];
+          return (
+            <div className={`kpi-grid ${loaded ? "in" : ""}`} role="region" aria-label="Portfolio summary">
+              {[
+                { l:"Portfolio",          v:`${cy}${Math.round(total).toLocaleString()}`,                  s:"Current value",   c:"var(--accent-blue)",   icon:"wallet"   },
+                { l:"Monthly DCA",        v:`${cy}${state.dca}`,                                           s:"Per contribution",c:"var(--accent-indigo)", icon:"zap"      },
+                { l:`${state.projectionMonths}-Mo Target`, v:`${cy}${Math.round(projection.finalTotal).toLocaleString()}`, s:`+${cy}${(state.dca * state.projectionMonths).toLocaleString()}`, c:"var(--accent-green)", icon:"trendUp" },
+                { l:"Proj. Drift",        v:`${projAvgDrift.toFixed(1)}%`,                                s:`Avg abs · ${state.projectionMonths}mo`, c: projAvgDrift<1?"var(--accent-green)":projAvgDrift<2.5?"var(--accent-amber)":"var(--accent-red)", icon:"sliders" },
+              ].map((k, i) => (
+                <div key={i} className="kpi">
+                  <div className="kpi-header">
+                    <div className="kpi-l">{k.l}</div>
+                    <ProgressRing pct={kpiRings[i]} color={k.c} size={26}/>
+                  </div>
+                  <div className="kpi-v mono" style={{ color:k.c }}>{k.v}</div>
+                  <div className="kpi-s">{k.s}</div>
+                  {kpiSparks[i] && <MiniSparkline values={kpiSparks[i]} color={k.c}/>}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {!targetOk && (
           <div className="banner banner-warn" role="alert">
@@ -680,24 +727,26 @@ function App() {
           </div>
         )}
 
-        {/* ── TABS ── */}
-        <div className="tabs" role="tablist" aria-label="Navigation">
-          {tabs.map((t, i) => (
-            <button
-              key={i} role="tab" aria-selected={tab === i}
-              className={`tab ${tab === i ? "active" : ""}`}
-              onClick={() => setTab(i)}
-            >
-              <Icon name={t.icon} className="tab-ico"/>
-              <span className="tab-full">{t.label}</span>
-              <span className="tab-short">{t.short}</span>
-            </button>
-          ))}
-        </div>
+        {/* ── TABS + CONTENT (sidebar layout on wide screens) ── */}
+        <div className="pr-layout">
+          <nav className="tabs pr-sidebar" role="tablist" aria-label="Navigation">
+            {tabs.map((t, i) => (
+              <button
+                key={i} role="tab" aria-selected={tab === i}
+                className={`tab ${tab === i ? "active" : ""}`}
+                onClick={() => switchTab(i)}
+              >
+                <Icon name={t.icon} className="tab-ico"/>
+                <span className="tab-full">{t.label}</span>
+                <span className="tab-short">{t.short}</span>
+              </button>
+            ))}
+          </nav>
 
+          <div className="content-wrap">
         {/* ── CONTENT ── */}
-        <div className="content" key={tab} role="tabpanel">
-          {tab === 0 && (
+        <div className={`content${tabTransit ? " content-out" : ""}`} key={displayedTab} role="tabpanel">
+          {displayedTab === 0 && (
             <OverviewTab
               sortedDrift={sortedDrift}
               enriched={enriched}
@@ -711,13 +760,13 @@ function App() {
               platformId={state.platform}
             />
           )}
-          {tab >= 1 && tab <= projection.steps.length && (
+          {displayedTab >= 1 && displayedTab <= projection.steps.length && (
             <MonthTab
-              step={projection.steps[tab - 1]}
+              step={projection.steps[displayedTab - 1]}
               allSteps={projection.steps}
-              stepIndex={tab - 1}
-              label={`Month ${tab}`}
-              isFirst={tab === 1}
+              stepIndex={displayedTab - 1}
+              label={`Month ${displayedTab}`}
+              isFirst={displayedTab === 1}
               dca={state.dca}
               cy={cy}
               onConfirmLock={() => setConfirmLock(true)}
@@ -726,7 +775,7 @@ function App() {
               showToast={showToast}
             />
           )}
-          {tab === projection.steps.length + 1 && (
+          {displayedTab === projection.steps.length + 1 && (
             <HealthTab
               finalPort={projection.finalPort}
               finalTotal={projection.finalTotal}
@@ -737,10 +786,12 @@ function App() {
               months={state.projectionMonths}
             />
           )}
-          {tab === projection.steps.length + 2 && (
+          {displayedTab === projection.steps.length + 2 && (
             <HistoryTab history={state.history} cy={cy}/>
           )}
         </div>
+          </div>{/* content-wrap */}
+        </div>{/* pr-layout */}
       </div>
 
       {/* ── MODALS ── */}
@@ -765,6 +816,15 @@ function App() {
           targetOk={targetOk}
           showToast={showToast}
           total={total}
+        />
+      )}
+
+      {dcaPickerOpen && (
+        <DcaPickerModal
+          cy={cy}
+          currentValue={state.dca}
+          onClose={() => setDcaPickerOpen(false)}
+          onSave={applyDcaFromPicker}
         />
       )}
 
@@ -794,6 +854,20 @@ function App() {
         />
       )}
 
+      {cmdOpen && (
+        <CommandPalette
+          tabs={tabs}
+          assets={state.assets}
+          onClose={() => setCmdOpen(false)}
+          onTabSelect={(i) => { switchTab(i); }}
+          onToggleTheme={() => setState(s => {
+            const cycle = { auto:"light", light:"dark", dark:"auto" };
+            return { ...s, theme: cycle[s.theme] || "auto" };
+          })}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+      )}
+
       <style>{getCSS()}</style>
     </div>
   );
@@ -801,15 +875,16 @@ function App() {
 
 // ─── THEME TOGGLE ─────────────────────────────────────────────
 function ThemeToggle({ theme, onToggle }) {
-  const cycle  = { auto:"light", light:"dark", dark:"auto" };
+  const cycle   = { auto:"light", light:"dark", dark:"auto" };
   const iconMap = { auto:"auto", light:"sun", dark:"moon" };
   const labels  = { auto:"Auto", light:"Light", dark:"Dark" };
+  const next    = cycle[theme];
   return (
     <button
       className="theme-btn"
-      onClick={() => onToggle(cycle[theme])}
-      title={`Theme: ${labels[theme]}`}
-      aria-label={`Theme is ${labels[theme]}, click to cycle`}
+      onClick={() => onToggle(next)}
+      title={`Theme: ${labels[theme]} → ${labels[next]}`}
+      aria-label={`Theme is ${labels[theme]}. Click to switch to ${labels[next]}.`}
     >
       <Icon name={iconMap[theme]} style={{ width:14, height:14 }}/>
       <span className="theme-label">{labels[theme]}</span>
@@ -818,7 +893,7 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────
-function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId }) {
+function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId }) {
   const [localVals, setLocalVals] = useState({});
 
   useEffect(() => {
@@ -841,6 +916,49 @@ function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen,
 
   return (
     <>
+      {/* Category breakdown — high-level view first */}
+      <Sh title="Category Breakdown" subtitle="Actual vs target allocation by asset class"/>
+      <div className="cat-grid">
+        {Object.keys(CAT_COLORS).filter(cat => enriched.some(a => a.cat === cat)).map(cat => {
+          const ca   = enriched.filter(a => a.cat === cat);
+          const cp   = ca.reduce((s, a) => s + a.pct, 0);
+          const ct   = ca.reduce((s, a) => s + a.target, 0);
+          const c    = CAT_COLORS[cat];
+          const over = cp > ct + 1;
+          return (
+            <div key={cat} className="cat-card">
+              <div className="cat-orb" style={{ background:c }}/>
+              <div className="cat-header">
+                <Icon name={CAT_ICONS[cat] || "barChart"} style={{ color:c, width:15, height:15 }}/>
+                <div className="cat-l">{cat}</div>
+              </div>
+              <div className="cat-v mono" style={{ color: over ? "var(--accent-amber)" : c }}>{cp.toFixed(1)}%</div>
+              <div className="cat-t">Target: {ct.toFixed(1)}%</div>
+              <div className="cat-bar">
+                <div className="cat-bar-f" style={{ width:`${Math.min(ct > 0 ? (cp / ct) * 100 : 0, 130)}%`, background: over ? "var(--accent-amber)" : c }}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Safety valve */}
+      <div className={`safety ${safetyBreach ? "safety-warn" : ""}`} role={safetyBreach ? "alert" : undefined}>
+        <Icon name={safetyBreach ? "shieldWarn" : "shield"} className="safety-ico" style={{ color: safetyBreach ? "var(--accent-red)" : undefined }}/>
+        {safetyBreach ? (
+          <div>
+            <div className="safety-t" style={{ color:"var(--accent-red)" }}>Safety Alert — {safetyBreach.ticker} is {(safetyBreach.pct - safetyBreach.target).toFixed(1)}% over target</div>
+            <div className="safety-d">Consider pausing buys for this asset until its allocation normalises naturally.</div>
+          </div>
+        ) : (
+          <div>
+            <div className="safety-t">Safety Valve: All Clear</div>
+            <div className="safety-d">No asset exceeds its target by more than 5%. Buy-only rebalancing is safe to proceed.</div>
+          </div>
+        )}
+      </div>
+
+      {/* Current Drift — per-asset detail */}
       <Sh title="Current Drift" subtitle="Sorted from most under-weight to most over-weight"/>
       <div className="drift-list" role="list">
         {sortedDrift.map((a, i) => {
@@ -866,9 +984,7 @@ function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen,
                 <div className={`d-bar ${neg ? "d-bar-neg" : "d-bar-pos"}`}
                   style={{ [neg ? "right" : "left"]:"50%", width:`${barW}%`, animationDelay:`${i * 0.04}s` }}/>
               </div>
-              <div className="d-pct mono" style={{ color: neg ? "var(--accent-blue)" : "var(--accent-amber)" }}>
-                {a.drift >= 0 ? "+" : ""}{a.drift.toFixed(1)}%
-              </div>
+              <DriftCell drift={a.drift}/>
               <div className="d-status">
                 <div className="d-pip" style={{ background:urg, boxShadow:`0 0 6px ${urg}70` }} aria-hidden="true"/>
                 <span className="d-range">{a.pct.toFixed(1)}% → {a.target.toFixed(1)}%</span>
@@ -878,48 +994,6 @@ function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen,
                   <div className="d-mob-bar-fill" style={{ width:`${Math.min(ad / 6 * 100, 100)}%`, background: neg ? "var(--accent-blue)" : "var(--accent-amber)" }}/>
                 </div>
                 <div className="d-pip" style={{ background:urg }}/>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Safety valve */}
-      <div className={`safety ${safetyBreach ? "safety-warn" : ""}`} role={safetyBreach ? "alert" : undefined}>
-        <Icon name={safetyBreach ? "shieldWarn" : "shield"} className="safety-ico" style={{ color: safetyBreach ? "var(--accent-red)" : undefined }}/>
-        {safetyBreach ? (
-          <div>
-            <div className="safety-t" style={{ color:"var(--accent-red)" }}>Safety Alert — {safetyBreach.ticker} is {(safetyBreach.pct - safetyBreach.target).toFixed(1)}% over target</div>
-            <div className="safety-d">Consider pausing buys for this asset until its allocation normalises naturally.</div>
-          </div>
-        ) : (
-          <div>
-            <div className="safety-t">Safety Valve: All Clear</div>
-            <div className="safety-d">No asset exceeds its target by more than 5%. Buy-only rebalancing is safe to proceed.</div>
-          </div>
-        )}
-      </div>
-
-      {/* Category breakdown */}
-      <Sh title="Category Breakdown" subtitle="Actual vs target allocation by asset class"/>
-      <div className="cat-grid">
-        {Object.keys(CAT_COLORS).filter(cat => enriched.some(a => a.cat === cat)).map(cat => {
-          const ca   = enriched.filter(a => a.cat === cat);
-          const cp   = ca.reduce((s, a) => s + a.pct, 0);
-          const ct   = ca.reduce((s, a) => s + a.target, 0);
-          const c    = CAT_COLORS[cat];
-          const over = cp > ct + 1;
-          return (
-            <div key={cat} className="cat-card">
-              <div className="cat-orb" style={{ background:c }}/>
-              <div className="cat-header">
-                <Icon name={CAT_ICONS[cat] || "barChart"} style={{ color:c, width:15, height:15 }}/>
-                <div className="cat-l">{cat}</div>
-              </div>
-              <div className="cat-v mono" style={{ color: over ? "var(--accent-amber)" : c }}>{cp.toFixed(1)}%</div>
-              <div className="cat-t">Target: {ct.toFixed(1)}%</div>
-              <div className="cat-bar">
-                <div className="cat-bar-f" style={{ width:`${Math.min(ct > 0 ? (cp / ct) * 100 : 0, 130)}%`, background: over ? "var(--accent-amber)" : c }}/>
               </div>
             </div>
           );
@@ -982,7 +1056,7 @@ function OverviewTab({ sortedDrift, enriched, total, safetyBreach, cy, editOpen,
 }
 
 // ─── MONTH TAB ────────────────────────────────────────────────
-function MonthTab({ step, allSteps, stepIndex, label, isFirst, dca, cy, onConfirmLock, assets, total, showToast }) {
+function MonthTab({ step, label, isFirst, dca, cy, onConfirmLock, showToast }) {
   const [copied, setCopied]       = useState(false);
   const [whatIfDca, setWhatIfDca] = useState(dca);
   const [showWhatIf, setShowWhatIf] = useState(false);
@@ -1057,7 +1131,7 @@ function MonthTab({ step, allSteps, stepIndex, label, isFirst, dca, cy, onConfir
             const c   = CAT_COLORS[b.cat] || "#6366f1";
             const pct = (b.buy / activeDca) * 100;
             return (
-              <div key={b.ticker} className="buy-card" style={{ animation:`slideIn 0.4s ease ${i * 0.05}s both` }}>
+              <div key={`${b.ticker}-${b.buy}`} className="buy-card" style={{ animation:`slideIn 0.4s ease ${i * 0.05}s both` }}>
                 <div className="buy-l">
                   <div className="buy-ico" style={{ background:`${c}18`, color:c }}>
                     <Icon name={b.icon}/>
@@ -1295,177 +1369,388 @@ function HistoryTab({ history, cy }) {
 }
 
 // ─── SETTINGS MODAL ───────────────────────────────────────────
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onReset, targetSum, targetOk, showToast, total }) {
+// ─── CATEGORY ALLOC ROW ───────────────────────────────────────
+function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget }) {
+  const [draft, setDraft] = useState(targetTotal.toFixed(1));
+  // Keep draft in sync when parent state changes (e.g. normalise)
+  useEffect(() => { setDraft(targetTotal.toFixed(1)); }, [targetTotal]);
+
+  const commit = () => {
+    const val = Math.max(0, Math.min(100, parseFloat(draft) || 0));
+    setDraft(val.toFixed(1));
+    onSetTarget(val);
+  };
+
+  return (
+    <div className="cat-alloc-row">
+      <div className="cat-alloc-label">
+        <div className="cat-alloc-dot" style={{ background: color }}/>
+        <Icon name={CAT_ICONS[cat] || "barChart"} style={{ width:14, height:14, color, flexShrink:0 }}/>
+        <span className="cat-alloc-name">{cat}</span>
+        <span className="cat-alloc-count">{assets.length}</span>
+      </div>
+      <div className="cat-alloc-assets">
+        {assets.map(a => (
+          <span key={a.ticker} className="cat-alloc-chip" style={{ background:`${color}18`, color }}>
+            {a.ticker}
+          </span>
+        ))}
+      </div>
+      <span className="cat-alloc-cur mono">{currentPct.toFixed(1)}%</span>
+      <div className="cat-alloc-inp-wrap">
+        <input
+          className="editor-inp mono cat-alloc-inp"
+          type="number" min="0" max="100" step="0.1"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === "Enter") { commit(); e.target.blur(); } }}
+          aria-label={`Target % for ${cat}`}
+        />
+        <span className="editor-sym">%</span>
+      </div>
+    </div>
+  );
+}
+
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onReset, targetSum, targetOk, showToast }) {
   const [section, setSection] = useState("general");
+  const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
+  const [platformExpanded, setPlatformExpanded] = useState(
+    () => PLATFORMS.findIndex(p => p.id === state.platform) >= 10
+  );
   const modalRef = useRef(null);
   useEffect(() => { modalRef.current?.focus(); }, []);
+
+  // Category targets: redistribute asset targets within a category proportionally
+  const setCategoryTarget = (cat, newCatTarget) => {
+    const assetsInCat = state.assets.filter(a => a.cat === cat);
+    if (!assetsInCat.length) return;
+    const currentCatTotal = assetsInCat.reduce((s, a) => s + a.target, 0);
+    assetsInCat.forEach(a => {
+      // keep relative weight; if current cat total is 0, split evenly
+      const share = currentCatTotal > 0 ? a.target / currentCatTotal : 1 / assetsInCat.length;
+      onUpdateAsset(a.ticker, "target", String((share * newCatTarget).toFixed(2)));
+    });
+  };
+
+  // Compute per-category summary from live state
+  const catSummary = useMemo(() => {
+    const activeCats = CATEGORIES.filter(cat => state.assets.some(a => a.cat === cat));
+    return activeCats.map(cat => {
+      const assets = state.assets.filter(a => a.cat === cat);
+      const targetTotal = assets.reduce((s, a) => s + a.target, 0);
+      const currentTotal = assets.reduce((s, a) => s + a.current, 0);
+      return { cat, assets, targetTotal, currentTotal };
+    });
+  }, [state.assets]);
+
+  const TABS = [
+    { id:"general", label:"General",  icon:"sliders" },
+    { id:"assets",  label:"Assets",   icon:"layers"  },
+    { id:"data",    label:"Data",     icon:"wallet"  },
+  ];
 
   return (
     <div className="overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Settings">
       <div className="modal lg-modal" ref={modalRef} tabIndex={-1} onClick={e => e.stopPropagation()}>
+
+        {/* ── Header ── */}
         <div className="modal-hdr">
-          <h2>Settings</h2>
+          <div className="modal-hdr-left">
+            <div className="modal-hdr-icon" aria-hidden="true">
+              <Icon name="sliders" style={{ width:16, height:16 }}/>
+            </div>
+            <div>
+              <h2 className="modal-hdr-title">Settings</h2>
+              <p className="modal-hdr-sub">Manage your portfolio preferences</p>
+            </div>
+          </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close settings">
-            <Icon name="close" style={{ width:15, height:15 }}/>
+            <Icon name="close" style={{ width:14, height:14 }}/>
           </button>
         </div>
 
+        {/* ── Tab bar ── */}
         <div className="modal-tabs" role="tablist">
-          {["general", "assets", "data"].map(s => (
-            <button key={s} role="tab" aria-selected={section === s}
-              className={`modal-tab ${section === s ? "active" : ""}`}
-              onClick={() => setSection(s)}>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+          {TABS.map(t => (
+            <button key={t.id} role="tab" aria-selected={section === t.id}
+              className={`modal-tab ${section === t.id ? "active" : ""}`}
+              onClick={() => setSection(t.id)}>
+              <Icon name={t.icon} style={{ width:13, height:13 }}/>
+              {t.label}
             </button>
           ))}
         </div>
 
+        {/* ══════════ GENERAL ══════════ */}
         {section === "general" && (
-          <div className="modal-body">
-            <SettingRow title="Monthly DCA" desc="How much you invest each month">
-              <div className="editor-inp-wrap">
-                <span className="editor-sym">{state.currency}</span>
-                <input className="editor-inp mono" type="number" min="1" max="1000000" step="10"
-                  value={localDca}
-                  onChange={e => setLocalDca(e.target.value)}
-                  onBlur={() => { onUpdateDca(localDca); showToast("DCA updated"); }}
-                  onKeyDown={e => { if (e.key === "Enter") { onUpdateDca(localDca); e.target.blur(); }}}
-                  style={{ width:90 }} aria-label="Monthly DCA"/>
+          <div key="general" className="modal-body">
+
+            {/* Investment */}
+            <div className="settings-group">
+              <div className="settings-group-label">Investment</div>
+              <div className="settings-card">
+                <SettingRow title="Monthly DCA" desc="How much you invest each month">
+                  <div className="editor-inp-wrap">
+                    <span className="editor-sym">{state.currency}</span>
+                    <input className="editor-inp mono" type="number" min="1" max="1000000" step="10"
+                      value={localDca}
+                      onChange={e => setLocalDca(e.target.value)}
+                      onBlur={() => { onUpdateDca(localDca); showToast("DCA updated"); }}
+                      onKeyDown={e => { if (e.key === "Enter") { onUpdateDca(localDca); e.target.blur(); }}}
+                      style={{ width:90 }} aria-label="Monthly DCA"/>
+                  </div>
+                </SettingRow>
+                <SettingDivider/>
+                <SettingRow title="Currency" desc="Symbol shown throughout the app">
+                  <div className="seg-ctrl" role="group">
+                    {CURRENCIES.map(c => (
+                      <button key={c} className={`seg-btn ${state.currency === c ? "active" : ""}`}
+                        onClick={() => onUpdateCurrency(c)}>{c}</button>
+                    ))}
+                  </div>
+                </SettingRow>
               </div>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Currency" desc="Symbol shown throughout the app">
-              <div className="seg-ctrl" role="group">
-                {CURRENCIES.map(c => (
-                  <button key={c} className={`seg-btn ${state.currency === c ? "active" : ""}`}
-                    onClick={() => onUpdateCurrency(c)}>{c}</button>
-                ))}
+            </div>
+
+            {/* Projection */}
+            <div className="settings-group">
+              <div className="settings-group-label">Projection</div>
+              <div className="settings-card">
+                <div className="proj-block proj-block-compact">
+                  <div className="proj-block-hdr">
+                    <div>
+                      <div className="setting-title">Projection Horizon</div>
+                      <div className="setting-desc">Simulate the next {state.projectionMonths} month{state.projectionMonths !== 1 ? "s" : ""} of DCA contributions</div>
+                    </div>
+                    <div className="proj-val-pill mono">{state.projectionMonths}<span>mo</span></div>
+                  </div>
+                  <div className="proj-slider-wrap">
+                    <div className="proj-slider-shell">
+                      <input type="range" min="1" max="12" value={state.projectionMonths}
+                        onChange={e => onUpdateProjection(e.target.value)}
+                        className="proj-slider"
+                        style={{ "--pct": `${((state.projectionMonths - 1) / 11) * 100}%` }}
+                        aria-label="Projection months"/>
+                    </div>
+                    <div className="proj-ticks" aria-hidden="true">
+                      {[1,3,6,9,12].map(m => (
+                        <span key={m} className={`proj-tick${state.projectionMonths >= m ? " hit" : ""}`}>{m}mo</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Platform" desc="Your brokerage or trading platform">
-              <div className="platform-grid">
-                {PLATFORMS.map(p => (
-                  <button key={p.id}
-                    className={`platform-opt ${state.platform === p.id ? "active" : ""}`}
-                    style={{ "--p-color": p.color }}
-                    onClick={() => onUpdatePlatform(p.id)}
-                    title={p.name}
-                    aria-label={p.name}
-                    aria-pressed={state.platform === p.id}
-                  >
-                    <span className="platform-opt-ico" aria-hidden="true">{PLATFORM_ICONS[p.id]}</span>
-                    <span className="platform-opt-name">{p.name}</span>
+            </div>
+
+            {/* Appearance */}
+            <div className="settings-group">
+              <div className="settings-group-label">Appearance</div>
+              <div className="settings-card">
+                <SettingRow title="Theme" desc="Auto follows system preference and switches at 07:00 / 20:00">
+                  <div className="seg-ctrl" role="group">
+                    {[["auto","Auto","auto"],["light","Light","sun"],["dark","Dark","moon"]].map(([val, label, ico]) => (
+                      <button key={val} className={`seg-btn ${state.theme === val ? "active" : ""}`}
+                        onClick={() => onUpdateTheme(val)}>
+                        <Icon name={ico} style={{ width:12, height:12 }}/>{label}
+                      </button>
+                    ))}
+                  </div>
+                </SettingRow>
+              </div>
+            </div>
+
+            {/* Platform */}
+            <div className="settings-group">
+              <div className="settings-group-label">Platform</div>
+              <div className="settings-group-desc">Your brokerage or trading app</div>
+              <div className="settings-card no-pad">
+                <div className="platform-grid-wrap">
+                  <div className="platform-grid">
+                    {(platformExpanded ? PLATFORMS : PLATFORMS.slice(0, 10)).map(p => (
+                      <button key={p.id}
+                        className={`platform-opt ${state.platform === p.id ? "active" : ""}`}
+                        style={{ "--p-color": p.color }}
+                        onClick={() => onUpdatePlatform(p.id)}
+                        title={p.name}
+                        aria-label={p.name}
+                        aria-pressed={state.platform === p.id}
+                      >
+                        <span className="platform-opt-ico" aria-hidden="true">{PLATFORM_ICONS[p.id]}</span>
+                        <span className="platform-opt-name">{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {PLATFORMS.length > 10 && (
+                    <button className="platform-expand-btn" onClick={() => setPlatformExpanded(v => !v)}>
+                      <Icon name={platformExpanded ? "warning" : "plus"} style={{ width:11, height:11 }}/>
+                      {platformExpanded ? "Show less" : `${PLATFORMS.length - 10} more platforms`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Danger zone */}
+            <div className="settings-group">
+              <div className="settings-group-label">Danger Zone</div>
+              <div className="settings-card">
+                <SettingRow title="Reset Portfolio" desc="Permanently clear all data and restore sample defaults">
+                  <button className="btn-danger sm" onClick={onReset}>
+                    <Icon name="trash" style={{ width:13, height:13 }}/>Reset
                   </button>
-                ))}
+                </SettingRow>
               </div>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Theme" desc="Auto follows system preference and switches at 07:00 / 20:00">
-              <div className="seg-ctrl" role="group">
-                {[["auto","Auto","auto"],["light","Light","sun"],["dark","Dark","moon"]].map(([val, label, ico]) => (
-                  <button key={val} className={`seg-btn ${state.theme === val ? "active" : ""}`}
-                    onClick={() => onUpdateTheme(val)}>
-                    <Icon name={ico} style={{ width:12, height:12 }}/>{label}
-                  </button>
-                ))}
-              </div>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Projection Horizon" desc={`Simulate the next ${state.projectionMonths} month${state.projectionMonths !== 1 ? "s" : ""} of DCA contributions`}>
-              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <input type="range" min="1" max="12" value={state.projectionMonths}
-                  onChange={e => onUpdateProjection(e.target.value)}
-                  style={{ width:110, accentColor:"var(--accent-indigo)" }}
-                  aria-label="Projection months"/>
-                <span className="mono" style={{ fontSize:16, fontWeight:700, color:"var(--accent-indigo)", minWidth:32 }}>{state.projectionMonths}</span>
-              </div>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Target Sum" desc="All target allocations must sum to exactly 100%">
-              <div className={`target-sum mono ${targetOk ? "ok" : "err"}`}>
-                {targetSum.toFixed(2)}%
-                <Icon name={targetOk ? "circleCheck" : "warning"} style={{ width:14, height:14, marginLeft:6 }}/>
-              </div>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Reset Portfolio" desc="Clear all data and restore sample defaults">
-              <button className="btn-danger sm" onClick={onReset}>
-                <Icon name="trash" style={{ width:13, height:13 }}/>Reset
-              </button>
-            </SettingRow>
+            </div>
+
           </div>
         )}
 
+        {/* ══════════ ASSETS ══════════ */}
         {section === "assets" && (
-          <div className="modal-body">
-            <div className="assets-toolbar">
-              {!targetOk && (
-                <div className="banner banner-warn" style={{ margin:0, flex:1, padding:"8px 12px" }}>
-                  <Icon name="warning" style={{ width:14, height:14, flexShrink:0 }}/>
-                  <span>Targets sum to {targetSum.toFixed(2)}% — must equal 100%</span>
-                </div>
-              )}
-              <button className="btn-ghost sm" onClick={onNormalize}>
-                <Icon name="normalize" style={{ width:13, height:13 }}/>Normalise to 100%
-              </button>
-            </div>
-            <div className="assets-table" role="table">
-              <div className="assets-thead" role="row">
-                <span>Asset</span><span>Category</span><span>Current</span><span>Target %</span><span/>
+          <div key="assets" className="modal-body">
+            {/* Toolbar */}
+            <div className="assets-view-toggle">
+              <div className="seg-ctrl" role="group" aria-label="Target view">
+                <button className={`seg-btn ${assetsView === "assets" ? "active" : ""}`}
+                  onClick={() => setAssetsView("assets")}>
+                  <Icon name="barChart" style={{ width:12, height:12 }}/>By Asset
+                </button>
+                <button className={`seg-btn ${assetsView === "categories" ? "active" : ""}`}
+                  onClick={() => setAssetsView("categories")}>
+                  <Icon name="layers" style={{ width:12, height:12 }}/>By Category
+                </button>
               </div>
-              {state.assets.map(a => (
-                <AssetRow key={a.ticker} asset={a}
-                  color={CAT_COLORS[a.cat] || "#6366f1"}
-                  currency={state.currency}
-                  onUpdate={(field, val) => onUpdateAsset(a.ticker, field, val)}
-                  onRemove={() => onRemoveAsset(a.ticker)}
-                />
-              ))}
+              <div className="assets-toolbar-right">
+                <div className={`target-sum-pill ${targetOk ? "ok" : "err"}`}>
+                  <Icon name={targetOk ? "circleCheck" : "warning"} style={{ width:13, height:13 }}/>
+                  {targetSum.toFixed(1)}%
+                </div>
+                <button className="btn-ghost sm" onClick={onNormalize}>
+                  <Icon name="normalize" style={{ width:13, height:13 }}/>Normalise
+                </button>
+              </div>
             </div>
-            <button className="btn-ghost add-btn" onClick={() => { onAddAsset(); showToast("Asset added — edit its values above."); }}>
-              <Icon name="addAsset" style={{ width:15, height:15 }}/>Add Asset
-            </button>
+
+            {/* Per-asset view */}
+            {assetsView === "assets" && (
+              <>
+                <div className="assets-table" role="table">
+                  <div className="assets-thead" role="row">
+                    <span>Asset</span><span>Category</span><span>Current</span><span>Target %</span><span/>
+                  </div>
+                  {state.assets.map(a => (
+                    <AssetRow key={a.ticker} asset={a}
+                      color={CAT_COLORS[a.cat] || "#6366f1"}
+                      currency={state.currency}
+                      onUpdate={(field, val) => onUpdateAsset(a.ticker, field, val)}
+                      onRemove={() => onRemoveAsset(a.ticker)}
+                    />
+                  ))}
+                </div>
+                <button className="btn-ghost add-btn" onClick={() => { onAddAsset(); showToast("Asset added — edit its values above."); }}>
+                  <Icon name="addAsset" style={{ width:15, height:15 }}/>Add Asset
+                </button>
+              </>
+            )}
+
+            {/* Per-category view */}
+            {assetsView === "categories" && (
+              <div className="cat-alloc-table">
+                <div className="cat-alloc-head">
+                  <span>Category</span>
+                  <span>Assets</span>
+                  <span>Current %</span>
+                  <span>Target %</span>
+                </div>
+                {catSummary.map(({ cat, assets, targetTotal, currentTotal }) => {
+                  const c = CAT_COLORS[cat] || "#6366f1";
+                  const grandTotal = state.assets.reduce((s, a) => s + a.current, 0);
+                  const currentPct = grandTotal > 0 ? (currentTotal / grandTotal) * 100 : 0;
+                  return (
+                    <CatAllocRow key={cat}
+                      cat={cat} color={c} assets={assets}
+                      currentPct={currentPct} targetTotal={targetTotal}
+                      onSetTarget={val => setCategoryTarget(cat, val)}
+                    />
+                  );
+                })}
+                <div className="cat-alloc-foot">
+                  <span>Total</span>
+                  <span/>
+                  <span className="mono">100%</span>
+                  <span className={`mono ${targetOk ? "ok-text" : "err-text"}`}>{targetSum.toFixed(1)}%</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* ══════════ DATA ══════════ */}
         {section === "data" && (
-          <div className="modal-body">
-            <p className="data-intro">All data is stored locally in your browser. <strong>Export regularly</strong> to avoid losing your history.</p>
-            <SettingRow title="Export JSON Backup" desc="Full backup — restores everything including history">
-              <button className="btn-ghost" onClick={onExportJSON}>
-                <Icon name="download" style={{ width:14, height:14 }}/>Export JSON
-              </button>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Export CSV" desc="Current holdings for spreadsheet analysis">
-              <button className="btn-ghost" onClick={onExportCSV}>
-                <Icon name="download" style={{ width:14, height:14 }}/>Export CSV
-              </button>
-            </SettingRow>
-            <SettingDivider/>
-            <SettingRow title="Import Backup" desc="Restore from a previously exported JSON file (v2 or v3)">
-              <button className="btn-ghost" onClick={onImport}>
-                <Icon name="upload" style={{ width:14, height:14 }}/>Import JSON
-              </button>
-            </SettingRow>
-            <SettingDivider/>
-            <div className="data-stats">
+          <div key="data" className="modal-body">
+
+            {/* Storage stats */}
+            <div className="data-stat-grid">
               {[
-                ["Assets",          state.assets.length],
-                ["History entries", state.history.length],
-                ["Schema version",  `v${SCHEMA_VERSION}`],
-                ["Storage used",    `${(JSON.stringify(state).length / 1024).toFixed(1)} KB`],
-              ].map(([label, val]) => (
-                <div key={label} className="data-stat-row">
-                  <span>{label}</span>
-                  <span className="mono">{val}</span>
+                { label:"Assets",    val:state.assets.length,          icon:"layers"  },
+                { label:"Snapshots", val:state.history.length,         icon:"calendar"},
+                { label:"Schema",    val:`v${SCHEMA_VERSION}`,         icon:"info"    },
+                { label:"Storage",   val:`${(JSON.stringify(state).length / 1024).toFixed(1)} KB`, icon:"wallet" },
+              ].map(({ label, val, icon }) => (
+                <div key={label} className="data-stat-card">
+                  <div className="data-stat-ico"><Icon name={icon} style={{ width:14, height:14 }}/></div>
+                  <div className="data-stat-val mono">{val}</div>
+                  <div className="data-stat-lbl">{label}</div>
                 </div>
               ))}
             </div>
+
+            {/* Export / Import */}
+            <div className="settings-group" style={{ marginTop:20 }}>
+              <div className="settings-group-label">Export & Import</div>
+              <div className="settings-card">
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">JSON Backup</div>
+                    <div className="setting-desc">Full backup — restores everything including history</div>
+                  </div>
+                  <button className="btn-ghost" onClick={onExportJSON}>
+                    <Icon name="download" style={{ width:14, height:14 }}/>Export
+                  </button>
+                </div>
+                <SettingDivider/>
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">CSV Export</div>
+                    <div className="setting-desc">Current holdings snapshot for spreadsheet analysis</div>
+                  </div>
+                  <button className="btn-ghost" onClick={onExportCSV}>
+                    <Icon name="download" style={{ width:14, height:14 }}/>Export
+                  </button>
+                </div>
+                <SettingDivider/>
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">Restore Backup</div>
+                    <div className="setting-desc">Import a previously exported JSON file (v2 or v3)</div>
+                  </div>
+                  <button className="btn-ghost" onClick={onImport}>
+                    <Icon name="upload" style={{ width:14, height:14 }}/>Import
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="data-footer-note">
+              <Icon name="info" style={{ width:13, height:13, flexShrink:0, marginTop:1 }}/>
+              <span>All data lives in your browser's local storage. Nothing is sent to any server. <strong>Export regularly</strong> to avoid data loss.</span>
+            </div>
           </div>
         )}
+
       </div>
     </div>
   );
@@ -1549,6 +1834,61 @@ function ConfirmModal({ icon, iconColor, title, body, confirmLabel, danger, onCa
   );
 }
 
+function DcaPickerModal({ cy, currentValue, onClose, onSave }) {
+  const [draft, setDraft] = useState(String(currentValue));
+  const presetValues = [10, 20, 50, 100, 130, 150, 200, 300];
+
+  useEffect(() => { setDraft(String(currentValue)); }, [currentValue]);
+
+  const parsedDraft = sanitizeNum(draft, 1, 1_000_000, currentValue);
+
+  return (
+    <div className="overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="DCA amount editor">
+      <div className="modal sm-modal dca-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-icon-wrap" style={{ background:"rgba(99,102,241,.12)" }}>
+          <Icon name="zap" style={{ width:24, height:24, color:"var(--accent-indigo)" }}/>
+        </div>
+        <h3>Set Monthly DCA</h3>
+        <p>Select a preset or enter a custom monthly amount.</p>
+
+        <div className="dca-preset-grid" role="group" aria-label="DCA presets">
+          {presetValues.map(v => (
+            <button
+              key={v}
+              className={`dca-preset-btn mono ${parsedDraft === v ? "active" : ""}`}
+              onClick={() => setDraft(String(v))}
+            >
+              {cy}{v}
+            </button>
+          ))}
+        </div>
+
+        <div className="editor-inp-wrap dca-modal-input-wrap">
+          <span className="editor-sym">{cy}</span>
+          <input
+            className="editor-inp mono"
+            type="number"
+            min="1"
+            max="1000000"
+            step="10"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") onSave(draft); }}
+            aria-label="Monthly DCA amount"
+            autoFocus
+          />
+          <span className="editor-sym">/mo</span>
+        </div>
+
+        <div className="modal-btns">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={() => onSave(draft)}>Save DCA</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── HELPERS ──────────────────────────────────────────────────
 function Sh({ title, subtitle }) {
   return (
@@ -1570,6 +1910,127 @@ function SettingRow({ title, desc, children }) {
   );
 }
 function SettingDivider() { return <div className="setting-divider"/>; }
+
+// ─── PROGRESS RING ────────────────────────────────────────────
+function ProgressRing({ pct, color, size = 26 }) {
+  const r = (size - 5) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - Math.min(100, Math.max(0, pct)) / 100);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ flexShrink:0 }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth="2.2" opacity="0.1"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="2.2"
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{ transition:"stroke-dashoffset .9s cubic-bezier(.16,1,.3,1)" }}/>
+    </svg>
+  );
+}
+
+// ─── MINI SPARKLINE ───────────────────────────────────────────
+function MiniSparkline({ values, color }) {
+  if (!values || values.length < 2) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const rng = (max - min) || 1;
+  const W = 72, H = 22;
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * (W - 4) + 2;
+    const y = H - 3 - ((v - min) / rng) * (H - 7);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const last = pts[pts.length - 1].split(",");
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true" style={{ display:"block", marginTop:8 }}>
+      <polyline fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"
+        points={pts.join(" ")} opacity="0.5"/>
+      <circle cx={last[0]} cy={last[1]} r="2.2" fill={color} opacity="0.85"/>
+    </svg>
+  );
+}
+
+// ─── DRIFT CELL ───────────────────────────────────────────────
+function DriftCell({ drift }) {
+  const neg = drift < 0;
+  const c = neg ? "var(--accent-blue)" : "var(--accent-amber)";
+  const barW = Math.min(Math.abs(drift) / 5 * 100, 100);
+  return (
+    <div className="drift-cell">
+      <div className="drift-cell-track">
+        <div className="drift-cell-fill" style={{
+          width:`${barW}%`, background:c,
+          marginLeft: neg ? "auto" : undefined,
+          animationDelay:"inherit",
+        }}/>
+      </div>
+      <span className="drift-cell-val mono" style={{ color:c }}>
+        {drift >= 0 ? "+" : ""}{drift.toFixed(1)}%
+      </span>
+    </div>
+  );
+}
+
+// ─── COMMAND PALETTE ──────────────────────────────────────────
+function CommandPalette({ tabs, onClose, onTabSelect, onToggleTheme, onOpenSettings, assets }) {
+  const [query, setQuery] = useState("");
+  const [sel, setSel]     = useState(0);
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const actions = useMemo(() => [
+    ...tabs.map((t, i) => ({ id:`tab-${i}`, label:t.label, type:"tab", icon:t.icon, fn:() => { onTabSelect(i); onClose(); } })),
+    { id:"settings", label:"Open Settings", type:"action", icon:"settings", fn:() => { onOpenSettings(); onClose(); } },
+    { id:"theme",    label:"Toggle Theme",  type:"action", icon:"auto",     fn:() => { onToggleTheme(); onClose(); } },
+    ...assets.map(a => ({ id:`a-${a.ticker}`, label:`${a.ticker}  ${a.name}`, type:"asset", icon:a.icon, fn:() => { onTabSelect(0); onClose(); } })),
+  ], [tabs, assets, onTabSelect, onClose, onToggleTheme, onOpenSettings]);
+
+  const results = useMemo(() =>
+    query ? actions.filter(a => a.label.toLowerCase().includes(query.toLowerCase())) : actions,
+  [query, actions]);
+
+  useEffect(() => { setSel(0); }, [query]);
+
+  const onKey = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setSel(s => Math.min(s + 1, results.length - 1)); }
+    if (e.key === "ArrowUp")   { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
+    if (e.key === "Enter" && results[sel]) results[sel].fn();
+    if (e.key === "Escape") onClose();
+  };
+
+  return (
+    <div className="cmd-overlay" onClick={onClose}>
+      <div className="cmd-palette" onClick={e => e.stopPropagation()}>
+        <div className="cmd-input-row">
+          <Icon name="settings" style={{ width:16, height:16, color:"var(--text3)", flexShrink:0 }}/>
+          <input ref={inputRef} className="cmd-input" value={query}
+            placeholder="Search tabs, assets, actions…"
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={onKey} aria-label="Command palette"/>
+          <kbd className="cmd-kbd">ESC</kbd>
+        </div>
+        <div className="cmd-list" role="listbox">
+          {results.length === 0
+            ? <div className="cmd-empty">No results for "{query}"</div>
+            : results.map((a, i) => (
+              <button key={a.id} role="option" aria-selected={i === sel}
+                className={`cmd-item${i === sel ? " sel" : ""}`}
+                onMouseEnter={() => setSel(i)} onClick={a.fn}>
+                <span className="cmd-ico"><Icon name={a.icon} style={{ width:13, height:13 }}/></span>
+                <span className="cmd-lbl">{a.label}</span>
+                <span className="cmd-tag">{a.type}</span>
+              </button>
+            ))
+          }
+        </div>
+        <div className="cmd-foot">
+          <span><kbd>↑↓</kbd> navigate</span>
+          <span><kbd>↵</kbd> select</span>
+          <span><kbd>⌘K</kbd> close</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── CSS ──────────────────────────────────────────────────────
 function getCSS() { return `
@@ -1624,11 +2085,12 @@ function getCSS() { return `
 /* ── BASE ── */
 *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
 .pr { min-height:100vh; background:linear-gradient(165deg,var(--bg) 0%,var(--bg2) 40%,var(--bg3) 100%); font-family:'DM Sans',-apple-system,sans-serif; color:var(--text); overflow-x:hidden; -webkit-font-smoothing:antialiased; transition:background .35s,color .35s; font-size:15px; }
+.pr.theme-transitioning,.pr.theme-transitioning * { transition:background-color 0.35s ease,background 0.35s ease,color 0.35s ease,border-color 0.35s ease,fill 0.35s ease,stroke 0.35s ease !important; }
 .mono { font-family:'JetBrains Mono',monospace; }
 .pr-glow { position:fixed; border-radius:50%; pointer-events:none; z-index:0; }
 .g1 { top:-200px; right:-200px; width:500px; height:500px; background:radial-gradient(circle,var(--glow1) 0%,transparent 70%); }
 .g2 { bottom:-250px; left:-100px; width:450px; height:450px; background:radial-gradient(circle,var(--glow2) 0%,transparent 70%); }
-.wrap { max-width:1100px; margin:0 auto; padding:44px 28px 100px; position:relative; z-index:1; }
+.wrap { max-width:1100px; margin:0 auto; padding:40px 28px 80px; position:relative; z-index:1; }
 
 /* ── ICONS ── */
 .svg-icon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1; }
@@ -1649,26 +2111,28 @@ function getCSS() { return `
 @keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(14px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
 
 /* ── HEADER ── */
-.hdr { margin-bottom:32px; opacity:0; transform:translateY(-16px); transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1); }
+.hdr { margin-bottom:24px; opacity:0; transform:translateY(-16px); transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1); }
 .hdr.in { opacity:1; transform:translateY(0); }
 .hdr-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
 .hdr-left { flex:1; min-width:0; }
 .hdr-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
 .dot { width:9px; height:9px; border-radius:50%; background:var(--accent-green); box-shadow:0 0 12px rgba(16,185,129,.65); animation:pulse 2s ease-in-out infinite; flex-shrink:0; }
 .hdr-tag { font-size:11px; font-weight:700; letter-spacing:2.8px; text-transform:uppercase; color:var(--accent-green); }
-.hdr-title { font-size:38px; font-weight:700; letter-spacing:-.6px; line-height:1.1; margin:0 0 8px; background:linear-gradient(135deg,var(--text),var(--text2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.hdr-title { font-size:34px; font-weight:700; letter-spacing:-.6px; line-height:1.1; margin:0 0 8px; background:linear-gradient(135deg,var(--text),var(--text2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; color:var(--text); }
 .hdr-sub-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .hdr-sub { color:var(--text3); font-size:14px; }
 .hdr-sep { color:var(--text4); font-size:14px; }
 .hdr-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-top:4px; }
 
-/* ── DCA INLINE EDIT ── */
+/* ── DCA EDITOR ── */
 .dca-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.2); border-radius:20px; cursor:pointer; font-size:14px; font-weight:600; color:var(--accent-indigo); transition:all .2s; }
 .dca-pill:hover { background:rgba(99,102,241,.18); border-color:rgba(99,102,241,.35); }
-.dca-edit-form { display:inline-flex; align-items:center; gap:4px; background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.35); border-radius:20px; padding:2px 10px; }
-.dca-sym { font-size:14px; color:var(--text3); font-family:'JetBrains Mono',monospace; }
-.dca-input { background:transparent; border:none; outline:none; font-size:15px; font-weight:700; color:var(--accent-indigo); width:70px; font-family:'JetBrains Mono',monospace; }
-.dca-input::-webkit-inner-spin-button,.dca-input::-webkit-outer-spin-button { opacity:.4; }
+.dca-modal { max-width:460px; text-align:center; }
+.dca-preset-grid { margin-top:14px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.dca-preset-btn { border:1px solid var(--border2); background:var(--surface); color:var(--text2); border-radius:9px; padding:8px 10px; cursor:pointer; font-size:12px; font-weight:600; transition:all .18s; }
+.dca-preset-btn:hover { border-color:rgba(99,102,241,.38); color:var(--accent-indigo); background:rgba(99,102,241,.08); }
+.dca-preset-btn.active { border-color:rgba(99,102,241,.45); color:var(--accent-indigo); background:rgba(99,102,241,.12); }
+.dca-modal-input-wrap { margin:14px auto 0; width:fit-content; }
 
 /* ── THEME BTN ── */
 .theme-btn { display:flex; align-items:center; gap:5px; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; cursor:pointer; color:var(--text3); font-size:12px; font-weight:600; font-family:inherit; transition:all .2s; }
@@ -1682,14 +2146,15 @@ function getCSS() { return `
 .icon-btn.danger-hover:hover { background:rgba(239,68,68,.1); color:var(--accent-red); border-color:rgba(239,68,68,.25); }
 
 /* ── KPI ── */
-.kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; opacity:0; transform:translateY(14px); transition:opacity .7s cubic-bezier(.16,1,.3,1) .1s,transform .7s cubic-bezier(.16,1,.3,1) .1s; }
+.kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; opacity:0; transform:translateY(14px); transition:opacity .7s cubic-bezier(.16,1,.3,1) .1s,transform .7s cubic-bezier(.16,1,.3,1) .1s; }
 .kpi-grid.in { opacity:1; transform:translateY(0); }
-.kpi { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 16px; transition:all .25s; }
+.kpi { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 16px 14px; transition:all .25s; display:flex; flex-direction:column; }
 .kpi:hover { background:var(--surface2); border-color:var(--border2); transform:translateY(-1px); }
-.kpi-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.kpi-l { font-size:11px; color:var(--text3); font-weight:600; letter-spacing:1px; text-transform:uppercase; }
-.kpi-v { font-size:24px; font-weight:700; letter-spacing:-.5px; line-height:1; }
-.kpi-s { font-size:12px; color:var(--text4); margin-top:5px; }
+.kpi-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:8px; }
+.kpi-l { font-size:11px; color:var(--text3); font-weight:600; letter-spacing:.8px; text-transform:uppercase; line-height:1.3; }
+.kpi-v { font-size:22px; font-weight:700; letter-spacing:-.5px; line-height:1; }
+.kpi-s { font-size:12px; color:var(--text4); margin-top:5px; line-height:1.4; }
+.kpi svg[aria-hidden] { margin-top:auto; padding-top:8px; }
 
 /* ── BANNER ── */
 .banner { display:flex; align-items:flex-start; gap:9px; padding:12px 16px; border-radius:11px; font-size:13px; margin-bottom:16px; line-height:1.55; }
@@ -1697,7 +2162,7 @@ function getCSS() { return `
 .banner strong { color:var(--accent-amber); }
 
 /* ── TABS ── */
-.tabs { display:flex; gap:3px; margin-bottom:28px; padding:4px; background:var(--surface); border-radius:14px; border:1px solid var(--border); overflow-x:auto; scrollbar-width:none; }
+.tabs { display:flex; gap:3px; margin-bottom:20px; padding:4px; background:var(--surface); border-radius:14px; border:1px solid var(--border); overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
 .tabs::-webkit-scrollbar { display:none; }
 .tab { flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:6px; padding:10px 14px; border:none; border-radius:10px; cursor:pointer; font-size:13px; font-weight:400; font-family:inherit; background:transparent; color:var(--text3); transition:all .25s; border-bottom:2px solid transparent; white-space:nowrap; }
 .tab.active { background:var(--kpi-active); color:var(--accent-indigo); font-weight:600; border-bottom-color:var(--accent-indigo); }
@@ -1706,14 +2171,15 @@ function getCSS() { return `
 
 /* ── CONTENT ── */
 .content { animation:fadeSlideIn .4s ease; }
-.sh { margin-top:28px; margin-bottom:16px; }
-.sh h2 { font-size:18px; font-weight:700; color:var(--text); letter-spacing:-.3px; }
-.sh p { font-size:13px; color:var(--text3); margin-top:4px; line-height:1.5; }
+.sh { margin-top:24px; margin-bottom:14px; }
+.sh:first-child { margin-top:4px; }
+.sh h2 { font-size:17px; font-weight:700; color:var(--text); letter-spacing:-.3px; }
+.sh p { font-size:13px; color:var(--text3); margin-top:3px; line-height:1.5; }
 .badge { font-size:11px; font-weight:600; padding:3px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; }
 
 /* ── DRIFT ── */
 .drift-list { display:flex; flex-direction:column; gap:6px; }
-.d-row { display:grid; grid-template-columns:130px 64px 1fr 64px 80px; align-items:center; gap:8px; padding:11px 14px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:all .25s; animation:slideIn .4s ease both; }
+.d-row { display:grid; grid-template-columns:minmax(110px,1.4fr) minmax(56px,auto) 1fr auto minmax(100px,auto); align-items:center; gap:8px 12px; padding:11px 14px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:all .25s; animation:slideIn .4s ease both; }
 .d-row:hover { background:var(--surface2); border-color:var(--border2); }
 .d-left { display:flex; align-items:center; gap:9px; min-width:0; }
 .d-icon { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -1728,9 +2194,9 @@ function getCSS() { return `
 .d-bar-neg { background:linear-gradient(90deg,#3b82f6,#60a5fa); }
 .d-bar-pos { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
 .d-pct { font-size:13px; font-weight:700; text-align:right; }
-.d-status { display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+.d-status { display:flex; align-items:center; gap:5px; justify-content:flex-end; min-width:0; }
 .d-pip { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.d-range { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.d-range { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
 .d-mob-drift { display:none; }
 
 /* ── CATEGORY ── */
@@ -1879,57 +2345,139 @@ function getCSS() { return `
 .hist-ticker { font-size:12px; font-weight:700; color:var(--text2); flex:1; }
 .hist-val { font-size:12px; color:var(--text); }
 
-/* ── SETTINGS MODAL ── */
-.overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(7px); z-index:1000; display:flex; align-items:center; justify-content:center; padding:20px; }
-.modal { background:var(--bg2); border:1px solid var(--border2); border-radius:20px; box-shadow:0 28px 90px rgba(0,0,0,.4); overflow:hidden; animation:modalIn .25s ease; width:100%; outline:none; }
-.lg-modal { max-width:700px; max-height:86vh; display:flex; flex-direction:column; }
+/* ══════════════════════════════════════════════
+   MODAL SHELL
+══════════════════════════════════════════════ */
+.overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; animation:fadeIn .18s ease; }
+.modal { background:var(--bg2); border:1px solid var(--border2); border-radius:22px; box-shadow:0 32px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04); overflow:hidden; animation:modalIn .22s cubic-bezier(.16,1,.3,1); width:100%; outline:none; }
+.lg-modal { max-width:680px; max-height:88vh; display:flex; flex-direction:column; }
 .sm-modal { max-width:400px; padding:32px 28px; text-align:center; }
 .sm-modal h3 { font-size:19px; font-weight:700; color:var(--text); margin:14px 0 8px; }
 .sm-modal p { font-size:14px; color:var(--text3); line-height:1.65; }
 .modal-icon-wrap { width:52px; height:52px; border-radius:16px; display:flex; align-items:center; justify-content:center; margin:0 auto; }
 .modal-btns { display:flex; gap:10px; justify-content:center; margin-top:22px; }
-.modal-hdr { display:flex; align-items:center; justify-content:space-between; padding:20px 22px; border-bottom:1px solid var(--border); flex-shrink:0; }
-.modal-hdr h2 { font-size:17px; font-weight:700; color:var(--text); }
-.modal-tabs { display:flex; gap:2px; padding:12px 22px 0; border-bottom:1px solid var(--border); flex-shrink:0; }
-.modal-tab { padding:9px 18px; border:none; background:transparent; color:var(--text3); font-size:14px; font-weight:500; font-family:inherit; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all .2s; }
-.modal-tab.active { color:var(--accent-indigo); border-bottom-color:var(--accent-indigo); font-weight:700; }
-.modal-body { padding:22px; overflow-y:auto; flex:1; }
-.setting-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 0; flex-wrap:wrap; }
+
+/* ── Modal header ── */
+.modal-hdr { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 16px; border-bottom:1px solid var(--border); flex-shrink:0; gap:12px; }
+.modal-hdr-left { display:flex; align-items:center; gap:12px; }
+.modal-hdr-icon { width:36px; height:36px; border-radius:10px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.2); display:flex; align-items:center; justify-content:center; color:var(--accent-indigo); flex-shrink:0; }
+.modal-hdr-title { font-size:16px; font-weight:700; color:var(--text); line-height:1.2; }
+.modal-hdr-sub { font-size:12px; color:var(--text3); margin-top:1px; }
+
+/* ── Tab bar ── */
+.modal-tabs { display:flex; gap:1px; padding:0 20px; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg2); }
+.modal-tab { display:flex; align-items:center; gap:6px; padding:11px 16px; border:none; background:transparent; color:var(--text3); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .18s,border-color .18s; white-space:nowrap; }
+.modal-tab:hover:not(.active) { color:var(--text2); }
+.modal-tab.active { color:var(--accent-indigo); border-bottom-color:var(--accent-indigo); font-weight:600; }
+
+/* ── Scrollable body ── */
+.modal-body { padding:20px; overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; display:flex; flex-direction:column; gap:0; animation:modalBodyIn .22s ease; }
+@keyframes modalBodyIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.modal-body::-webkit-scrollbar { width:5px; }
+.modal-body::-webkit-scrollbar-track { background:transparent; }
+.modal-body::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+
+/* ══════════════════════════════════════════════
+   SETTINGS GROUPS & CARDS
+══════════════════════════════════════════════ */
+.settings-group { margin-bottom:20px; }
+.settings-group:last-child { margin-bottom:0; }
+.settings-group-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; color:var(--text3); margin-bottom:6px; padding:0 2px; }
+.settings-group-desc { font-size:12px; color:var(--text4); margin-bottom:8px; padding:0 2px; }
+.settings-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+.settings-card.no-pad { }
+
+/* ── Setting row ── */
+.setting-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 16px; }
+.setting-row + .setting-row { border-top:1px solid var(--border); }
 .setting-label { flex:1; min-width:0; }
 .setting-ctrl { flex-shrink:0; }
-.setting-title { font-size:14px; font-weight:700; color:var(--text); }
-.setting-desc { font-size:12px; color:var(--text3); margin-top:3px; line-height:1.45; }
-.setting-divider { height:1px; background:var(--border); margin:12px 0; }
-.target-sum { font-size:15px; font-weight:700; display:flex; align-items:center; }
-.target-sum.ok { color:var(--accent-green); }
-.target-sum.err { color:var(--accent-red); }
+.setting-title { font-size:14px; font-weight:600; color:var(--text); }
+.setting-desc { font-size:12px; color:var(--text3); margin-top:2px; line-height:1.45; }
+.setting-divider { height:1px; background:var(--border); }
 
-/* ── SEGMENTED CONTROL ── */
-.seg-ctrl { display:flex; background:var(--surface2); border-radius:9px; padding:3px; gap:2px; }
-.seg-btn { display:flex; align-items:center; gap:5px; padding:6px 13px; border:none; border-radius:7px; background:transparent; color:var(--text3); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; transition:all .2s; white-space:nowrap; }
-.seg-btn.active { background:var(--bg); color:var(--text); box-shadow:0 1px 5px rgba(0,0,0,.18); font-weight:700; }
-.seg-btn:hover:not(.active) { color:var(--text2); }
+/* ── Segmented control ── */
+.seg-ctrl { display:flex; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:3px; gap:2px; }
+.seg-btn { display:flex; align-items:center; gap:5px; padding:6px 12px; border:none; border-radius:7px; background:transparent; color:var(--text3); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; transition:all .18s; white-space:nowrap; }
+.seg-btn.active { background:var(--bg2); color:var(--text); box-shadow:0 1px 6px rgba(0,0,0,.2); font-weight:600; }
+.seg-btn:hover:not(.active) { color:var(--text2); background:rgba(255,255,255,.04); }
 
-/* ── ASSETS TABLE ── */
-.assets-toolbar { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
-.assets-table { display:flex; flex-direction:column; gap:7px; }
-.assets-thead { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 32px; gap:9px; padding:0 10px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
-.assets-trow { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 32px; gap:9px; align-items:center; padding:10px; border-radius:11px; background:var(--surface); border:1px solid var(--border); transition:border-color .2s; }
-.assets-trow:hover { border-color:var(--border2); }
+/* ── Target sum pill (assets toolbar) ── */
+.target-sum-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:20px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+.target-sum-pill.ok { background:rgba(16,185,129,.1); color:var(--accent-green); border:1px solid rgba(16,185,129,.25); }
+.target-sum-pill.err { background:rgba(239,68,68,.1); color:var(--accent-red); border:1px solid rgba(239,68,68,.25); }
+.ok-text { color:var(--accent-green); }
+.err-text { color:var(--accent-red); }
+
+/* ── Platform picker ── */
+.platform-grid-wrap { padding:12px; }
+.platform-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; width:100%; }
+.platform-opt { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px 6px; border-radius:10px; border:1.5px solid var(--border2); background:var(--bg2); cursor:pointer; color:var(--text3); font-size:10px; font-weight:500; transition:border-color .15s,background .15s,color .15s,transform .15s; text-align:center; min-width:0; }
+.platform-opt:hover { border-color:var(--p-color); color:var(--text); background:color-mix(in srgb, var(--p-color) 6%, var(--bg2)); transform:translateY(-1px); }
+.platform-opt.active { border-color:var(--p-color); background:color-mix(in srgb, var(--p-color) 14%, var(--bg2)); color:var(--p-color); font-weight:600; }
+.platform-opt-ico { width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:7px; overflow:hidden; }
+.platform-opt-ico svg,.platform-opt-ico img { width:28px; height:28px; display:block; object-fit:contain; }
+.platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; line-height:1.2; }
+.platform-expand-btn { display:flex; align-items:center; justify-content:center; gap:6px; margin-top:8px; width:100%; padding:8px; background:transparent; border:1px dashed var(--border2); border-radius:9px; color:var(--text3); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .15s,color .15s,border-color .15s; }
+.platform-expand-btn:hover { background:var(--surface2); color:var(--text2); border-color:var(--border2); border-style:solid; }
+@media (max-width:540px) { .platform-grid { grid-template-columns:repeat(3,1fr); gap:5px; } }
+@media (min-width:541px) and (max-width:768px) { .platform-grid { grid-template-columns:repeat(4,1fr); } }
+
+/* ── Assets view toggle ── */
+.assets-view-toggle { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.assets-toolbar-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* ── Assets table ── */
+.assets-table { display:flex; flex-direction:column; gap:6px; }
+.assets-thead { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 32px; gap:9px; padding:0 12px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
+.assets-trow { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 32px; gap:9px; align-items:center; padding:11px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:border-color .18s,background .18s; }
+.assets-trow:hover { border-color:var(--border2); background:var(--surface2); }
 .asset-name-cell { display:flex; align-items:center; gap:9px; min-width:0; }
 .asset-text-inp { background:transparent; border:none; outline:none; color:var(--text); font-family:inherit; display:block; line-height:1.35; }
 .asset-text-inp:focus { background:rgba(99,102,241,.1); border-radius:4px; padding:1px 5px; }
-.asset-select { background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; color:var(--text2); font-size:12px; font-family:inherit; padding:6px 8px; outline:none; cursor:pointer; }
-.asset-select:focus { border-color:rgba(99,102,241,.45); }
+.asset-select { background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; color:var(--text2); font-size:12px; font-family:inherit; padding:6px 8px; outline:none; cursor:pointer; transition:border-color .18s; }
+.asset-select:focus { border-color:rgba(99,102,241,.5); outline:none; }
 
-/* ── DATA SECTION ── */
-.data-intro { font-size:13px; color:var(--text3); line-height:1.7; margin-bottom:20px; }
-.data-intro strong { color:var(--text2); }
-.data-stats { margin-top:16px; padding:16px; background:var(--surface); border:1px solid var(--border); border-radius:12px; display:flex; flex-direction:column; gap:11px; }
-.data-stat-row { display:flex; justify-content:space-between; align-items:center; font-size:14px; color:var(--text3); }
-.data-stat-row .mono { color:var(--text); font-weight:700; }
+/* ── Category allocation table ── */
+.cat-alloc-table { display:flex; flex-direction:column; gap:6px; }
+.cat-alloc-head { display:grid; grid-template-columns:1.6fr 1fr 80px 100px; gap:10px; padding:0 12px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
+.cat-alloc-row { display:grid; grid-template-columns:1.6fr 1fr 80px 100px; gap:10px; align-items:center; padding:11px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:border-color .18s,background .18s; }
+.cat-alloc-row:hover { border-color:var(--border2); background:var(--surface2); }
+.cat-alloc-label { display:flex; align-items:center; gap:7px; min-width:0; }
+.cat-alloc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.cat-alloc-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; }
+.cat-alloc-count { font-size:11px; color:var(--text4); background:var(--surface2); border-radius:10px; padding:1px 7px; flex-shrink:0; border:1px solid var(--border); }
+.cat-alloc-assets { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
+.cat-alloc-chip { font-size:10px; font-weight:700; padding:2px 6px; border-radius:5px; white-space:nowrap; font-family:'JetBrains Mono',monospace; }
+.cat-alloc-cur { font-size:13px; color:var(--text2); text-align:right; font-family:'JetBrains Mono',monospace; }
+.cat-alloc-inp-wrap { display:flex; align-items:center; gap:4px; justify-content:flex-end; }
+.cat-alloc-inp { width:56px !important; text-align:right; }
+.cat-alloc-foot { display:grid; grid-template-columns:1.6fr 1fr 80px 100px; gap:10px; padding:10px 12px 4px; font-size:12px; font-weight:700; color:var(--text3); border-top:1px solid var(--border); margin-top:4px; }
+.cat-alloc-foot .mono { font-size:13px; text-align:right; }
+@media (max-width:600px) {
+  .cat-alloc-head,.cat-alloc-row,.cat-alloc-foot { grid-template-columns:1fr 80px 90px; }
+  .cat-alloc-assets,.cat-alloc-head span:nth-child(2) { display:none; }
+}
 
-/* ── NOTE INPUT ── */
+/* ── Data section ── */
+.data-stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.data-stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 12px 12px; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; }
+.data-stat-ico { width:28px; height:28px; border-radius:8px; background:rgba(99,102,241,.1); display:flex; align-items:center; justify-content:center; color:var(--accent-indigo); }
+.data-stat-val { font-size:15px; font-weight:700; color:var(--text); }
+.data-stat-lbl { font-size:11px; color:var(--text4); font-weight:500; }
+.data-action-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 16px; }
+.data-action-info { flex:1; min-width:0; }
+.data-footer-note { display:flex; align-items:flex-start; gap:8px; margin-top:16px; padding:12px 14px; background:rgba(99,102,241,.06); border:1px solid rgba(99,102,241,.14); border-radius:10px; font-size:12px; color:var(--text3); line-height:1.6; }
+.data-footer-note strong { color:var(--text2); }
+@media (max-width:480px) { .data-stat-grid { grid-template-columns:repeat(2,1fr); } }
+
+/* ── Projection block ── */
+.proj-block { padding:13px 16px 16px; }
+.proj-block-hdr { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.proj-val-pill { display:inline-flex; align-items:baseline; gap:3px; padding:5px 14px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.25); border-radius:20px; color:var(--accent-indigo); font-size:20px; font-weight:700; line-height:1; flex-shrink:0; }
+.proj-val-pill span { font-size:11px; font-weight:500; color:var(--text3); }
+
+/* ── Note input ── */
 .note-input { width:100%; margin-top:16px; padding:11px 14px; background:var(--surface); border:1px solid var(--border2); border-radius:10px; color:var(--text); font-size:14px; font-family:inherit; outline:none; resize:vertical; min-height:64px; line-height:1.55; transition:border-color .2s; }
 .note-input:focus { border-color:rgba(99,102,241,.45); }
 .note-input::placeholder { color:var(--text4); }
@@ -1941,18 +2489,35 @@ function getCSS() { return `
 @keyframes slideIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
 @keyframes modalIn { from{opacity:0;transform:scale(.96) translateY(14px)} to{opacity:1;transform:scale(1) translateY(0)} }
 
+/* ════════════ MID-RANGE (769–1279px) ════════════ */
+@media (min-width:769px) and (max-width:1279px) {
+.wrap { max-width:900px; padding:36px 24px 80px; }
+.hdr-title { font-size:32px; }
+.kpi-grid { grid-template-columns:repeat(4,1fr); gap:10px; }
+.kpi-v { font-size:20px; }
+/* keep horizontal tabs with full labels */
+.tabs { margin-bottom:18px; }
+.tab-full { display:inline; }
+.tab-short { display:none; }
+/* full 5-col drift row at this range */
+.d-row { grid-template-columns:minmax(110px,1.4fr) minmax(56px,auto) 1fr auto minmax(100px,auto); }
+.d-bar-area,.d-status { display:flex; }
+.d-mob-drift { display:none; }
+}
+
 /* ════════════ TABLET (≤768px) ════════════ */
 @media (max-width:768px) {
-.wrap { padding:28px 18px 100px; }
-.hdr-title { font-size:30px; }
+.wrap { padding:28px 18px 80px; }
+.hdr-title { font-size:28px; }
 .kpi-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
 .kpi-v { font-size:20px; }
 .tab { padding:9px 8px; font-size:12px; }
 .tab-full { display:none; }
 .tab-short { display:inline; font-size:11px; }
-.d-row { grid-template-columns:1fr auto auto; grid-template-rows:auto auto; gap:4px 9px; }
+/* tablet: ticker | value | drift-cell; bar & status hidden */
+.d-row { grid-template-columns:1fr minmax(56px,auto) auto; grid-template-rows:auto; gap:6px 10px; }
 .d-bar-area,.d-status { display:none; }
-.d-mob-drift { display:flex; align-items:center; gap:8px; grid-column:1/-1; padding-top:5px; }
+.d-mob-drift { display:flex; align-items:center; gap:8px; grid-column:1/-1; padding-top:4px; }
 .d-mob-bar-track { flex:1; height:5px; border-radius:3px; background:var(--surface2); overflow:hidden; }
 .d-mob-bar-fill { height:100%; border-radius:3px; animation:growBar .7s ease both; }
 .cat-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
@@ -1962,18 +2527,21 @@ function getCSS() { return `
 .assets-thead,.assets-trow { grid-template-columns:2fr 1fr 1fr 36px; }
 .assets-thead span:nth-child(4),.assets-trow .editor-inp-wrap:last-of-type { display:none; }
 .close-month-section { flex-direction:column; align-items:flex-start; }
-.setting-row { flex-direction:column; align-items:flex-start; gap:10px; }
+.setting-row { flex-direction:column; align-items:flex-start; gap:10px; padding:12px 14px; }
 .setting-ctrl { align-self:flex-start; }
+.modal-tab { padding:10px 12px; font-size:12px; }
+.lg-modal { max-height:92vh; }
+.data-action-row { flex-direction:column; align-items:flex-start; gap:10px; padding:12px 14px; }
 }
 
 /* ════════════ MOBILE (≤480px) ════════════ */
 @media (max-width:480px) {
-.wrap { padding:18px 14px 100px; }
-.hdr-title { font-size:24px; }
+.wrap { padding:16px 12px 72px; }
+.hdr-title { font-size:22px; letter-spacing:-.3px; }
 .hdr-tag { font-size:10px; }
-.kpi-grid { gap:8px; }
-.kpi { padding:13px 12px; border-radius:12px; }
-.kpi-v { font-size:18px; }
+.kpi-grid { grid-template-columns:repeat(2,1fr); gap:8px; }
+.kpi { padding:12px 11px 10px; border-radius:12px; }
+.kpi-v { font-size:17px; }
 .kpi-l { font-size:10px; }
 .kpi-s { font-size:11px; }
 .tabs { gap:2px; padding:3px; }
@@ -1995,10 +2563,15 @@ function getCSS() { return `
 .total-l { font-size:13px; }
 .total-v { font-size:16px; }
 .editor-row { padding:9px 12px; }
-.modal { border-radius:16px; }
-.lg-modal { max-height:93vh; }
-.sm-modal { padding:24px 20px; }
+.modal { border-radius:18px; }
+.lg-modal { max-height:94vh; }
+.sm-modal { padding:24px 18px; }
 .sm-modal h3 { font-size:17px; }
+.modal-hdr { padding:14px 16px; }
+.modal-tabs { padding:0 14px; }
+.modal-tab { padding:10px 10px; font-size:12px; gap:5px; }
+.modal-body { padding:14px; }
+.settings-group-label { font-size:10px; }
 .assets-thead,.assets-trow { grid-template-columns:1fr 1fr 36px; }
 .assets-thead span:nth-child(2),.assets-trow select { display:none; }
 .close-month-section { padding:14px; }
@@ -2010,16 +2583,114 @@ function getCSS() { return `
 /* ── PLATFORM BADGE ── */
 .platform-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px 2px 4px; border-radius:20px; background:color-mix(in srgb, var(--p-color) 15%, transparent); color:var(--p-color); font-size:12px; font-weight:600; vertical-align:middle; line-height:1.3; }
 .platform-ico { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:4px; overflow:hidden; }
-.platform-ico svg { width:16px; height:16px; display:block; }
+.platform-ico svg,.platform-ico img { width:16px; height:16px; display:block; }
 
 /* ── PLATFORM PICKER ── */
-.platform-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; width:100%; }
-.platform-opt { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:10px; border:1.5px solid var(--border2); background:var(--surface); cursor:pointer; color:var(--text2); font-size:13px; font-weight:500; transition:border-color .15s,background .15s,color .15s; text-align:left; }
+.platform-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; width:100%; }
+.platform-opt { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px 6px; border-radius:10px; border:1.5px solid var(--border2); background:var(--surface); cursor:pointer; color:var(--text3); font-size:10px; font-weight:500; transition:border-color .15s,background .15s,color .15s; text-align:center; min-width:0; }
 .platform-opt:hover { border-color:var(--p-color); color:var(--text); background:color-mix(in srgb, var(--p-color) 8%, var(--surface)); }
 .platform-opt.active { border-color:var(--p-color); background:color-mix(in srgb, var(--p-color) 15%, var(--surface)); color:var(--p-color); font-weight:600; }
-.platform-opt-ico { width:22px; height:22px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:5px; overflow:hidden; }
-.platform-opt-ico svg { width:22px; height:22px; display:block; }
-.platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.platform-opt-ico { width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:6px; overflow:hidden; }
+.platform-opt-ico svg,.platform-opt-ico img { width:28px; height:28px; display:block; object-fit:contain; }
+.platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; line-height:1.2; }
+@media (max-width:540px) { .platform-grid { grid-template-columns:repeat(3,1fr); gap:5px; } }
+@media (min-width:541px) and (max-width:768px) { .platform-grid { grid-template-columns:repeat(4,1fr); } }
+.platform-expand-btn { margin-top:8px; width:100%; padding:7px; background:transparent; border:1px dashed var(--border2); border-radius:8px; color:var(--text3); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .15s,color .15s,border-color .15s; }
+.platform-expand-btn:hover { background:var(--surface2); color:var(--text); border-color:var(--border2); border-style:solid; }
+
+/* ── PROJECTION HORIZON ── */
+.proj-block { padding:10px 0 18px; }
+.proj-block-compact { max-width:560px; margin-inline:auto; }
+.proj-block-hdr { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.proj-val-pill { display:inline-flex; align-items:baseline; gap:3px; padding:4px 12px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.25); border-radius:20px; color:var(--accent-indigo); font-size:20px; font-weight:700; line-height:1; }
+.proj-val-pill span { font-size:11px; font-weight:500; color:var(--text3); }
+.proj-slider-wrap { display:flex; flex-direction:column; gap:10px; }
+.proj-block-compact .proj-slider-wrap { max-width:460px; }
+.proj-slider-shell { padding:0 2px; }
+.proj-slider { -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:999px; outline:none; cursor:pointer; border:none; background:linear-gradient(to right, var(--accent-indigo) var(--pct,0%), var(--border2) var(--pct,0%)); }
+.proj-slider::-webkit-slider-runnable-track { height:8px; border-radius:999px; background:transparent; }
+.proj-slider::-moz-range-track { height:8px; border-radius:999px; background:transparent; }
+.proj-slider::-webkit-slider-thumb { -webkit-appearance:none; margin-top:-6px; width:20px; height:20px; border-radius:50%; background:var(--accent-indigo); border:3px solid var(--bg2); box-shadow:0 0 0 2px rgba(99,102,241,.3),0 2px 8px rgba(99,102,241,.35); cursor:pointer; transition:transform .15s,box-shadow .15s; }
+.proj-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:var(--accent-indigo); border:3px solid var(--bg2); box-shadow:0 0 0 2px rgba(99,102,241,.3),0 2px 8px rgba(99,102,241,.35); cursor:pointer; transition:transform .15s,box-shadow .15s; }
+.proj-slider::-webkit-slider-thumb:hover { transform:scale(1.12); box-shadow:0 0 0 4px rgba(99,102,241,.2),0 4px 14px rgba(99,102,241,.4); }
+.proj-slider:focus-visible::-webkit-slider-thumb { box-shadow:0 0 0 4px rgba(99,102,241,.35),0 2px 8px rgba(99,102,241,.35); }
+.proj-ticks { display:flex; justify-content:space-between; align-items:center; pointer-events:none; padding:0 2px; }
+.proj-tick { font-size:10px; font-weight:500; color:var(--text4); transition:color .2s,font-weight .2s; }
+.proj-tick.hit { color:var(--accent-indigo); font-weight:700; }
+
+/* ── CONTENT TRANSITION ── */
+.content { animation:fadeSlideIn .38s cubic-bezier(.16,1,.3,1); }
+.content-out { opacity:0; transform:translateY(8px); transition:opacity .15s ease,transform .15s ease; pointer-events:none; }
+@keyframes fadeSlideIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── GLASSMORPHISM SURFACES ── */
+.kpi,.buy-card,.cat-card,.d-row,.h-card,.safety,.after-row,.sparkline-card,.whatif-panel {
+  backdrop-filter:blur(12px) saturate(140%);
+  -webkit-backdrop-filter:blur(12px) saturate(140%);
+}
+.modal-inner,.settings-sidebar {
+  backdrop-filter:blur(20px) saturate(160%);
+  -webkit-backdrop-filter:blur(20px) saturate(160%);
+}
+
+/* ── DRIFT CELL ── */
+.drift-cell { display:flex; flex-direction:column; gap:3px; align-items:flex-end; min-width:60px; }
+.drift-cell-track { width:48px; height:4px; border-radius:3px; background:var(--surface2); overflow:hidden; display:flex; flex-shrink:0; }
+.drift-cell-fill { height:100%; border-radius:3px; animation:growBar .7s ease both; min-width:2px; }
+.drift-cell-val { font-size:12px; font-weight:700; letter-spacing:.2px; white-space:nowrap; }
+
+/* ── COMMAND PALETTE ── */
+.cmd-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; animation:fadeIn .15s ease; backdrop-filter:blur(4px); }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.cmd-palette { width:min(580px,92vw); background:var(--bg2); border:1px solid var(--border2); border-radius:16px; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04); animation:modalIn .2s cubic-bezier(.16,1,.3,1); backdrop-filter:blur(24px); }
+.cmd-input-row { display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid var(--border); }
+.cmd-input { flex:1; background:transparent; border:none; outline:none; font-size:16px; color:var(--text); font-family:inherit; }
+.cmd-input::placeholder { color:var(--text4); }
+.cmd-kbd { padding:3px 7px; background:var(--surface2); border:1px solid var(--border2); border-radius:5px; font-size:11px; color:var(--text3); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
+.cmd-list { max-height:320px; overflow-y:auto; padding:6px; scrollbar-width:thin; }
+.cmd-item { width:100%; display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; border-radius:10px; cursor:pointer; background:transparent; color:var(--text2); font-size:14px; font-family:inherit; transition:background .12s; text-align:left; }
+.cmd-item.sel,.cmd-item:hover { background:var(--kpi-active); color:var(--text); }
+.cmd-ico { width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:7px; background:var(--surface2); flex-shrink:0; color:var(--text3); }
+.cmd-lbl { flex:1; font-size:14px; }
+.cmd-tag { font-size:10px; color:var(--text4); background:var(--surface2); padding:2px 7px; border-radius:4px; text-transform:uppercase; letter-spacing:.5px; }
+.cmd-empty { padding:32px 16px; text-align:center; color:var(--text4); font-size:14px; }
+.cmd-foot { display:flex; gap:16px; padding:10px 16px; border-top:1px solid var(--border); font-size:12px; color:var(--text4); }
+.cmd-foot kbd { display:inline-block; padding:1px 6px; background:var(--surface2); border:1px solid var(--border2); border-radius:4px; font-size:11px; font-family:'JetBrains Mono',monospace; }
+
+
+/* ── SIDEBAR LAYOUT (desktop ≥1280px) ── */
+@media (min-width:1280px) {
+.wrap { max-width:1400px; padding-left:36px; padding-right:36px; }
+.pr-layout { display:grid; grid-template-columns:200px 1fr; gap:28px; align-items:start; }
+/* Hide the horizontal tab bar on desktop — sidebar replaces it */
+.tabs:not(.pr-sidebar) { display:none; }
+.pr-sidebar {
+  position:sticky; top:28px;
+  display:flex; flex-direction:column; gap:2px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:16px; padding:8px;
+  overflow:hidden;
+  /* override the horizontal tabs margin-bottom */
+  margin-bottom:0 !important;
+}
+.pr-sidebar .tab {
+  width:100%; justify-content:flex-start; gap:10px;
+  padding:10px 12px; border-radius:10px;
+  border-bottom:none; border-left:3px solid transparent;
+  border-right:none; font-size:13px; font-weight:500;
+  color:var(--text2);
+}
+.pr-sidebar .tab.active {
+  background:var(--kpi-active); color:var(--accent-indigo);
+  font-weight:600; border-left-color:var(--accent-indigo);
+  border-bottom-color:transparent;
+}
+.pr-sidebar .tab:hover:not(.active) { background:var(--surface2); color:var(--text); }
+.pr-sidebar .tab-short { display:none; }
+.pr-sidebar .tab-full { display:inline; }
+.pr-sidebar .tab-ico { width:15px; height:15px; opacity:1; }
+.content-wrap { min-width:0; }
+}
 
 /* ── PRINT ── */
 @media print {
