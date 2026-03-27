@@ -29,7 +29,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, Component } from "react";
 import { fetchLiveQuotes, fetchFxRates, buildLiveModel, pushLocalSnapshot, persistSnapshotRemote } from "./services/marketData";
-import { importBrokerCsv, fetchBrokerPositionsAdapter } from "./services/brokerImport";
+import { importBrokerCsv, fetchBrokerPositionsAdapter, importTradeRepublicPdf } from "./services/brokerImport";
 
 // ─── CONSTANTS ────────────────────────────────────────────────
 const SCHEMA_VERSION = 4;
@@ -501,6 +501,7 @@ function App() {
   const toastRef    = useRef(null);
   const fileInputRef = useRef(null);
   const brokerFileInputRef = useRef(null);
+  const pdfFileInputRef = useRef(null);
   const tabTimerRef  = useRef(null);
   const liveTimerRef = useRef(null);
 
@@ -825,6 +826,60 @@ function App() {
     reader.readAsText(file);
   }, [brokerSource, showToast]);
 
+  const handlePdfImport = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = await importTradeRepublicPdf(buffer);
+      if (!result.assets.length) {
+        showToast(`No positions found in PDF (detected: ${result.type}). Try CSV import instead.`, "error");
+        return;
+      }
+      setState(s => {
+        const merged = [...s.assets];
+        for (const row of result.assets) {
+          const idx = merged.findIndex(a => a.ticker === row.ticker || (row._isin && a._isin === row._isin));
+          if (idx >= 0) {
+            merged[idx] = {
+              ...merged[idx],
+              name: row.name || merged[idx].name,
+              cat: CATEGORIES.includes(row.cat) ? row.cat : merged[idx].cat,
+              current: row.current > 0 ? sanitizeNum(row.current, 0, 10_000_000, merged[idx].current) : merged[idx].current,
+              ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
+            };
+          } else {
+            merged.push({
+              name: sanitizeStr(row.name || row.ticker, 40),
+              ticker: row.ticker,
+              cat: CATEGORIES.includes(row.cat) ? row.cat : "Other",
+              current: sanitizeNum(row.current, 0, 10_000_000, 0),
+              target: 0,
+              icon: OFFICIAL_TICKER_ICONS[row.ticker] || "barChart",
+              ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
+            });
+          }
+        }
+        const logEntry = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          source: `TR PDF (${result.type})`,
+          totalRows: result.totalRows,
+          importedRows: result.importedRows,
+          importedAt: new Date().toISOString(),
+        };
+        return {
+          ...s,
+          assets: merged,
+          brokerImportLog: [...(s.brokerImportLog || []).slice(-39), logEntry],
+        };
+      });
+      showToast(`Imported ${result.importedRows} positions from Trade Republic ${result.type} PDF`);
+    } catch (error) {
+      showToast(`PDF import failed: ${error?.message || "Unknown error"}`, "error");
+    }
+  }, [showToast]);
+
   const testBrokerApiAdapter = useCallback(async () => {
     const result = await fetchBrokerPositionsAdapter(brokerSource, {});
     if (result.ok) showToast("Broker API adapter is connected");
@@ -957,6 +1012,7 @@ function App() {
       <div className="pr-glow g1" aria-hidden="true"/><div className="pr-glow g2" aria-hidden="true"/>
       <input ref={fileInputRef} type="file" accept=".json" style={{ display:"none" }} onChange={handleImport} aria-hidden="true"/>
       <input ref={brokerFileInputRef} type="file" accept=".csv,text/csv" style={{ display:"none" }} onChange={handleBrokerImport} aria-hidden="true"/>
+      <input ref={pdfFileInputRef} type="file" accept=".pdf,application/pdf" style={{ display:"none" }} onChange={handlePdfImport} aria-hidden="true"/>
 
       {toast && (
         <div className={`toast toast-${toast.type || "success"}`} role="alert" aria-live="assertive">
@@ -1139,6 +1195,7 @@ function App() {
           onExportCSV={() => { exportCSV(state.assets, cy); showToast("CSV downloaded."); }}
           onImport={() => fileInputRef.current?.click()}
           onImportBrokerCsv={() => brokerFileInputRef.current?.click()}
+          onImportPdf={() => pdfFileInputRef.current?.click()}
           brokerSource={brokerSource}
           onBrokerSourceChange={setBrokerSource}
           onTestBrokerApi={testBrokerApiAdapter}
@@ -1883,7 +1940,7 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, brokerSource, onBrokerSourceChange, onTestBrokerApi, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [] }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, brokerSource, onBrokerSourceChange, onTestBrokerApi, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [] }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
@@ -2262,6 +2319,16 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                     <option value="interactive-brokers">Interactive Brokers (IBKR)</option>
                     <option value="generic">Generic CSV</option>
                   </select>
+                </div>
+                <SettingDivider/>
+                <div className="data-action-row">
+                  <div className="data-action-info">
+                    <div className="setting-title">Import Trade Republic PDF</div>
+                    <div className="setting-desc">Import positions directly from your TR securities or crypto statement PDFs. Extracts holdings quantities automatically.</div>
+                  </div>
+                  <button className="btn-ghost" onClick={onImportPdf}>
+                    <Icon name="upload" style={{ width:14, height:14 }}/>Import PDF
+                  </button>
                 </div>
                 <SettingDivider/>
                 <div className="data-action-row">
