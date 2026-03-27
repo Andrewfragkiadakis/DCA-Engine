@@ -78,12 +78,14 @@ function mapCategory(name = "") {
 function parseTradeRepublic(records) {
   return records.map(r => {
     const ticker = normalizeTicker(r.Ticker || r.Symbol || r.ISIN || r.WKN);
+    const holdings = asNum(r.Quantity || r.Holdings || r.Shares || r.Units || r.Amount || 0);
     return {
       ticker,
       name: r.Name || r.Asset || ticker || "Imported Asset",
       current: asNum(r["Current Value"] || r["Market Value"] || r.Value || 0),
       target: asNum(r["Target %"] || r.Target || 0),
       cat: mapCategory(r.Category || r["Asset Class"]),
+      ...(holdings > 0 ? { holdings } : {}),
     };
   }).filter(a => a.ticker);
 }
@@ -91,12 +93,14 @@ function parseTradeRepublic(records) {
 function parseIbkr(records) {
   return records.map(r => {
     const ticker = normalizeTicker(r.Symbol || r.Ticker || r.Conid || "");
+    const holdings = asNum(r.Quantity || r.Position || r.Shares || 0);
     return {
       ticker,
       name: r.Description || r.Name || ticker || "Imported Asset",
       current: asNum(r["Market Value"] || r["Position Value"] || r.Value || 0),
       target: asNum(r["Target %"] || 0),
       cat: mapCategory(r["Asset Class"] || r.Sector || ""),
+      ...(holdings > 0 ? { holdings } : {}),
     };
   }).filter(a => a.ticker);
 }
@@ -104,12 +108,14 @@ function parseIbkr(records) {
 function parseGeneric(records) {
   return records.map(r => {
     const ticker = normalizeTicker(r.Ticker || r.Symbol || r.Asset || "");
+    const holdings = asNum(r.Quantity || r.Holdings || r.Shares || r.Units || 0);
     return {
       ticker,
       name: r.Name || ticker || "Imported Asset",
       current: asNum(r.Current || r["Current Value"] || r.Value || 0),
       target: asNum(r.Target || r["Target %"] || 0),
       cat: mapCategory(r.Category || r["Asset Class"] || ""),
+      ...(holdings > 0 ? { holdings } : {}),
     };
   }).filter(a => a.ticker);
 }

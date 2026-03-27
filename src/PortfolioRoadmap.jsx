@@ -265,6 +265,7 @@ function sanitizeStr(v, maxLen = 32) {
 }
 function sanitizeAsset(a) {
   if (!a || typeof a !== "object") return null;
+  const holdings = a.holdings != null ? sanitizeNum(a.holdings, 0, 1_000_000_000, null) : null;
   return {
     name:    sanitizeStr(a.name || "Asset", 40),
     ticker:  sanitizeStr((a.ticker || "???").toUpperCase(), 10).replace(/[^A-Z0-9.&]/g, "") || "???",
@@ -272,6 +273,7 @@ function sanitizeAsset(a) {
     current: sanitizeNum(a.current, 0, 10_000_000, 0),
     target:  sanitizeNum(a.target,  0, 100, 0),
     icon:    typeof a.icon === "string" && Icons[a.icon] ? a.icon : "barChart",
+    ...(holdings != null ? { holdings } : {}),
   };
 }
 
@@ -436,9 +438,9 @@ function exportJSON(state) {
 
 function exportCSV(assets, currency) {
   const total = assets.reduce((s, a) => s + a.current, 0);
-  const header = ["Ticker", "Name", "Category", `Current Value (${currency})`, "Target %", "Actual %", "Drift %"].join(",");
+  const header = ["Ticker", "Name", "Category", "Holdings", `Current Value (${currency})`, "Target %", "Actual %", "Drift %"].join(",");
   const rows = enrich(assets, total).map(a =>
-    [a.ticker, `"${a.name}"`, a.cat, a.current.toFixed(2), a.target.toFixed(2), a.pct.toFixed(2), a.drift.toFixed(2)].join(",")
+    [a.ticker, `"${a.name}"`, a.cat, a.holdings != null ? a.holdings : "", a.current.toFixed(2), a.target.toFixed(2), a.pct.toFixed(2), a.drift.toFixed(2)].join(",")
   );
   triggerDownload(
     [header, ...rows].join("\n"),
@@ -618,6 +620,11 @@ function App() {
         if (field === "name") return { ...a, name: sanitizeStr(raw, 40) };
         if (field === "cat")  return { ...a, cat: CATEGORIES.includes(raw) ? raw : a.cat };
         if (field === "icon") return { ...a, icon: Icons[raw] ? raw : a.icon };
+        if (field === "holdings") {
+          const v = raw === "" || raw == null ? undefined : sanitizeNum(raw, 0, 1_000_000_000, a.holdings);
+          if (v === undefined) { const { holdings: _, ...rest } = a; return rest; }
+          return { ...a, holdings: v };
+        }
         return a;
       }),
     }));
@@ -658,11 +665,33 @@ function App() {
   const addAsset = useCallback(() => {
     setState(s => ({
       ...s,
-      assets: [...s.assets, { name:"New Asset", ticker:`NEW${s.assets.length}`, cat:"ETF", current:0, target:0, icon:"barChart" }],
+      assets: [...s.assets, { name:"New Asset", ticker:`NEW${s.assets.length}`, cat:"ETF", current:0, target:0, icon:"barChart", holdings: 0 }],
     }));
   }, []);
 
-  const removeAsset = useCallback((ticker) => setState(s => ({ ...s, assets: s.assets.filter(a => a.ticker !== ticker) })), []);
+  const [pendingRemove, setPendingRemove] = useState(null);
+  const undoRef = useRef(null);
+
+  const requestRemoveAsset = useCallback((ticker) => {
+    const asset = state.assets.find(a => a.ticker === ticker);
+    if (asset) setPendingRemove(asset);
+  }, [state.assets]);
+
+  const confirmRemoveAsset = useCallback(() => {
+    if (!pendingRemove) return;
+    const removed = pendingRemove;
+    setState(s => ({ ...s, assets: s.assets.filter(a => a.ticker !== removed.ticker) }));
+    setPendingRemove(null);
+    // undo toast
+    if (undoRef.current) clearTimeout(undoRef.current);
+    setToast({ msg: `${removed.name || removed.ticker} removed`, type: "info", undo: () => {
+      setState(s => ({ ...s, assets: [...s.assets, removed] }));
+      setToast(null);
+    }});
+    undoRef.current = setTimeout(() => setToast(null), 6000);
+  }, [pendingRemove]);
+
+  const cancelRemoveAsset = useCallback(() => setPendingRemove(null), []);
 
   const updatePlatform = useCallback((id) => {
     setState(s => ({ ...s, platform: id }));
@@ -709,7 +738,16 @@ function App() {
           persistSnapshotRemote(pushed.snap).catch(() => null);
         }
 
-        return { ...s, live: livePatch, priceSnapshots };
+        // Auto-update current values for assets with holdings set
+        const updatedAssets = s.assets.map(a => {
+          const row = model.rows.find(r => r.ticker === a.ticker);
+          if (row?.holdingsComputed) {
+            return { ...a, current: Math.round(row.liveValue * 100) / 100 };
+          }
+          return a;
+        });
+
+        return { ...s, assets: updatedAssets, live: livePatch, priceSnapshots };
       });
       if (!silent) showToast("Live prices refreshed");
     } catch (error) {
@@ -754,6 +792,7 @@ function App() {
                 cat: CATEGORIES.includes(row.cat) ? row.cat : merged[idx].cat,
                 current: sanitizeNum(row.current, 0, 10_000_000, merged[idx].current),
                 target: row.target > 0 ? sanitizeNum(row.target, 0, 100, merged[idx].target) : merged[idx].target,
+                ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
               };
             } else {
               merged.push({
@@ -763,6 +802,7 @@ function App() {
                 current: sanitizeNum(row.current, 0, 10_000_000, 0),
                 target: sanitizeNum(row.target, 0, 100, 0),
                 icon: "barChart",
+                ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
               });
             }
           }
@@ -922,6 +962,9 @@ function App() {
         <div className={`toast toast-${toast.type || "success"}`} role="alert" aria-live="assertive">
           <Icon name={toast.type === "error" ? "warning" : "circleCheck"} style={{ width:15, height:15, flexShrink:0 }}/>
           {toast.msg}
+          {toast.undo && (
+            <button className="toast-undo-btn" onClick={toast.undo}>Undo</button>
+          )}
         </div>
       )}
 
@@ -1090,7 +1133,7 @@ function App() {
           onUpdatePlatform={updatePlatform}
           onUpdateAsset={updateAsset}
           onAddAsset={addAsset}
-          onRemoveAsset={removeAsset}
+          onRemoveAsset={requestRemoveAsset}
           onNormalize={normalizeTargets}
           onExportJSON={() => { exportJSON(state); showToast("JSON backup downloaded."); }}
           onExportCSV={() => { exportCSV(state.assets, cy); showToast("CSV downloaded."); }}
@@ -1148,6 +1191,19 @@ function App() {
           danger
           onCancel={() => setConfirmReset(false)}
           onConfirm={hardReset}
+        />
+      )}
+
+      {pendingRemove && (
+        <ConfirmModal
+          icon="close"
+          iconColor="var(--accent-red)"
+          title={`Remove ${pendingRemove.name || pendingRemove.ticker}?`}
+          body={`This will remove "${pendingRemove.ticker}" (${cy}${pendingRemove.current.toFixed(2)}) from your portfolio. You can undo this briefly after removal.`}
+          confirmLabel="Remove Asset"
+          danger
+          onCancel={cancelRemoveAsset}
+          onConfirm={confirmRemoveAsset}
         />
       )}
 
@@ -2088,7 +2144,7 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
               <>
                 <div className="assets-table" role="table">
                   <div className="assets-thead" role="row">
-                    <span>Asset</span><span>Category</span><span>Current</span><span>Target %</span><span/>
+                    <span>Asset</span><span>Category</span><span>Holdings</span><span>Current</span><span>Target %</span><span/>
                   </div>
                   {state.assets.map(a => (
                     <AssetRow key={a.ticker} asset={a}
@@ -2255,8 +2311,11 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
 
 // ─── ASSET ROW (controlled) ───────────────────────────────────
 function AssetRow({ asset, color, currency, onUpdate, onRemove }) {
-  const [v, setV] = useState({ ticker: asset.ticker, name: asset.name, current: String(asset.current), target: String(asset.target) });
+  const [v, setV] = useState({ ticker: asset.ticker, name: asset.name, current: String(asset.current), target: String(asset.target), holdings: asset.holdings != null ? String(asset.holdings) : "" });
+  // Sync current value when parent updates it (e.g. from live price refresh)
+  useEffect(() => { setV(x => ({ ...x, current: String(asset.current) })); }, [asset.current]);
   const flush = (field) => onUpdate(field, v[field]);
+  const hasHoldings = v.holdings !== "" && Number(v.holdings) > 0;
   return (
     <div className="assets-trow" role="row">
       <div className="asset-name-cell">
@@ -2277,12 +2336,23 @@ function AssetRow({ asset, color, currency, onUpdate, onRemove }) {
         {CATEGORIES.map(c => <option key={c}>{c}</option>)}
       </select>
       <div className="editor-inp-wrap sm">
+        <input className="editor-inp mono" type="number" min="0" max="1000000000" step="any"
+          value={v.holdings}
+          onChange={e => setV(x => ({ ...x, holdings: e.target.value }))}
+          onBlur={() => flush("holdings")}
+          placeholder="qty"
+          title="Number of units/shares/coins you own. When set, current value auto-updates from live prices."
+          style={{ width:68 }} aria-label="Holdings quantity"/>
+      </div>
+      <div className="editor-inp-wrap sm">
         <span className="editor-sym">{currency}</span>
         <input className="editor-inp mono" type="number" min="0" max="10000000" step="0.01"
           value={v.current}
           onChange={e => setV(x => ({ ...x, current: e.target.value }))}
           onBlur={() => flush("current")}
-          style={{ width:72 }} aria-label="Current value"/>
+          disabled={hasHoldings}
+          title={hasHoldings ? "Auto-calculated from holdings \u00d7 live price" : "Manual value"}
+          style={{ width:72, opacity: hasHoldings ? 0.6 : 1 }} aria-label="Current value"/>
       </div>
       <div className="editor-inp-wrap sm">
         <input className="editor-inp mono" type="number" min="0" max="100" step="0.01"
@@ -2607,6 +2677,8 @@ function getCSS() { return `
 .toast-info    { border-color:rgba(99,102,241,.35); color:var(--accent-indigo); }
 .toast-error   { border-color:rgba(239,68,68,.35);  color:var(--accent-red); }
 @keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(14px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+.toast-undo-btn { background:transparent; border:1px solid var(--accent-indigo); color:var(--accent-indigo); border-radius:6px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer; margin-left:6px; white-space:nowrap; transition:background .15s,color .15s; }
+.toast-undo-btn:hover { background:var(--accent-indigo); color:#fff; }
 
 /* ── HEADER ── */
 .hdr { margin-bottom:24px; opacity:0; transform:translateY(-16px); transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1); }

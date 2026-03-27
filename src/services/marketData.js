@@ -64,23 +64,32 @@ export function buildLiveModel({ assets, quotesData, fxData, currency, baselineT
   const rows = assets.map(asset => {
     const quote = quotes[asset.ticker] || null;
     const dayChangePct = quote?.dayChangePct || 0;
-    const liveValue = asset.current * (1 + dayChangePct / 100);
-    const dailyPnl = liveValue - asset.current;
     const livePriceInCurrency = quote?.priceUsd ? quote.priceUsd * usdToCurrency : null;
+
+    // If holdings are set and we have a live price, compute real value
+    const hasHoldings = asset.holdings != null && asset.holdings > 0 && livePriceInCurrency != null;
+    const liveValue = hasHoldings
+      ? asset.holdings * livePriceInCurrency
+      : asset.current * (1 + dayChangePct / 100);
+    const baseValue = hasHoldings ? liveValue / (1 + dayChangePct / 100) : asset.current;
+    const dailyPnl = liveValue - baseValue;
+
     return {
       ticker: asset.ticker,
       name: asset.name,
       cat: asset.cat,
       source: quote?.source || "none",
       dayChangePct,
-      baseValue: asset.current,
+      baseValue,
       liveValue,
       dailyPnl,
       quotePrice: livePriceInCurrency,
+      holdings: asset.holdings,
+      holdingsComputed: hasHoldings,
     };
   });
 
-  const totalBase = assets.reduce((sum, a) => sum + a.current, 0);
+  const totalBase = rows.reduce((sum, r) => sum + r.baseValue, 0);
   const totalLive = rows.reduce((sum, r) => sum + r.liveValue, 0);
   const dailyPnl = totalLive - totalBase;
   const dailyPnlPct = totalBase > 0 ? (dailyPnl / totalBase) * 100 : 0;
