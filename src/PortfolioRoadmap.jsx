@@ -299,6 +299,12 @@ const DEFAULT_STATE = {
   projectionMonths: 3,
   history: [],
   platform: "trade-republic",
+  income: {
+    monthlyNet: 0,
+    label: "",
+    asOf: null,
+  },
+  dcaSchedule: [],
   live: {
     enabled: false,
     refreshSec: 60,
@@ -314,6 +320,59 @@ const DEFAULT_STATE = {
   priceSnapshots: [],
   brokerImportLog: [],
 };
+
+function sanitizeIncome(v) {
+  if (!v || typeof v !== "object") return { monthlyNet: 0, label: "", asOf: null };
+  return {
+    monthlyNet: sanitizeNum(v.monthlyNet, 0, 1_000_000, 0),
+    label: typeof v.label === "string" ? v.label.slice(0, 60) : "",
+    asOf: typeof v.asOf === "string" ? v.asOf : null,
+  };
+}
+
+function sanitizeDcaSchedule(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map(item => {
+      if (!item || typeof item !== "object") return null;
+      const amount = sanitizeNum(item.amount, 0, 1_000_000, 0);
+      const effectiveFrom = typeof item.effectiveFrom === "string" && /^\d{4}-\d{2}$/.test(item.effectiveFrom) ? item.effectiveFrom : null;
+      if (!effectiveFrom) return null;
+      return {
+        id: typeof item.id === "string" ? item.id.slice(0, 32) : `sch-${Math.random().toString(36).slice(2, 9)}`,
+        effectiveFrom,
+        amount,
+        note: typeof item.note === "string" ? item.note.slice(0, 80) : "",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))
+    .slice(0, 24);
+}
+
+function currentMonthYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function activeDcaFromSchedule(schedule, baseDca, ym = currentMonthYM()) {
+  if (!Array.isArray(schedule) || !schedule.length) return baseDca;
+  const past = schedule.filter(s => s.effectiveFrom <= ym).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return past[0] ? past[0].amount : baseDca;
+}
+
+function nextDcaFromSchedule(schedule, ym = currentMonthYM()) {
+  if (!Array.isArray(schedule) || !schedule.length) return null;
+  return schedule.find(s => s.effectiveFrom > ym) || null;
+}
+
+function addMonths(ym, n) {
+  const [y, m] = ym.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}`;
+}
 
 // ─── STORAGE (versioned) ──────────────────────────────────────
 function loadState() {
@@ -363,6 +422,8 @@ function loadState() {
       },
       priceSnapshots: Array.isArray(p?.priceSnapshots) ? p.priceSnapshots.slice(-300) : [],
       brokerImportLog: Array.isArray(p?.brokerImportLog) ? p.brokerImportLog.slice(-40) : [],
+      income: sanitizeIncome(p?.income),
+      dcaSchedule: sanitizeDcaSchedule(p?.dcaSchedule),
     };
   } catch { return null; }
 }
@@ -592,6 +653,22 @@ function App() {
     });
   }, [state.assets, state?.live?.quoteData, state?.live?.fxData, state?.live?.baselineTotal, isoCurrency]);
 
+  const upcomingDcaChange = useMemo(() => nextDcaFromSchedule(state.dcaSchedule || []), [state.dcaSchedule]);
+  const scheduledDcaNow = useMemo(() => activeDcaFromSchedule(state.dcaSchedule || [], state.dca), [state.dcaSchedule, state.dca]);
+  const savingsRatePct = useMemo(() => {
+    const income = state.income?.monthlyNet || 0;
+    if (!income || income <= 0) return null;
+    return (state.dca / income) * 100;
+  }, [state.income, state.dca]);
+
+  // Apply scheduled DCA when an entry's effective date is reached
+  useEffect(() => {
+    if (!state.dcaSchedule?.length) return;
+    if (scheduledDcaNow !== state.dca) {
+      setState(s => ({ ...s, dca: scheduledDcaNow }));
+    }
+  }, [scheduledDcaNow, state.dca, state.dcaSchedule]);
+
   const driftAlerts = useMemo(() => {
     if (!state.alerts.enabled) return [];
     const threshold = sanitizeNum(state.alerts.driftThreshold, 0.5, 10, 2);
@@ -699,6 +776,34 @@ function App() {
     showToast("Platform updated");
   }, [showToast]);
 
+  const updateIncome = useCallback((patch) => {
+    setState(s => ({
+      ...s,
+      income: sanitizeIncome({ ...(s.income || {}), ...patch, asOf: new Date().toISOString() }),
+    }));
+  }, []);
+
+  const addDcaScheduleEntry = useCallback((entry) => {
+    setState(s => {
+      const next = sanitizeDcaSchedule([
+        ...(s.dcaSchedule || []),
+        { id: `sch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, ...entry },
+      ]);
+      return { ...s, dcaSchedule: next };
+    });
+  }, []);
+
+  const removeDcaScheduleEntry = useCallback((id) => {
+    setState(s => ({ ...s, dcaSchedule: (s.dcaSchedule || []).filter(x => x.id !== id) }));
+  }, []);
+
+  const applyScheduledDca = useCallback((amount) => {
+    const n = sanitizeNum(amount, 1, 1_000_000, 0);
+    if (!n) return;
+    setState(s => ({ ...s, dca: n }));
+    showToast(`Monthly DCA updated to ${n}`);
+  }, [showToast]);
+
   const refreshLiveData = useCallback(async (opts = {}) => {
     if (!state.assets.length) return;
     const silent = !!opts.silent;
@@ -710,7 +815,8 @@ function App() {
         fetchFxRates("USD"),
       ]);
       setState(s => {
-        const baseline = s?.live?.baselineTotal == null ? total : s.live.baselineTotal;
+        const freshTotal = s.assets.reduce((sum, a) => sum + (a.current || 0), 0);
+        const baseline = s?.live?.baselineTotal == null ? freshTotal : s.live.baselineTotal;
         const livePatch = {
           ...(s.live || {}),
           enabled: true,
@@ -758,7 +864,7 @@ function App() {
     } finally {
       if (!silent) setLiveLoading(false);
     }
-  }, [state.assets, total, showToast]);
+  }, [state.assets, showToast]);
 
   const toggleLiveTracking = useCallback((enabled) => {
     setState(s => ({ ...s, live: { ...s.live, enabled } }));
@@ -987,6 +1093,8 @@ function App() {
           },
           priceSnapshots: Array.isArray(parsed?.priceSnapshots) ? parsed.priceSnapshots.slice(-300) : [],
           brokerImportLog: Array.isArray(parsed?.brokerImportLog) ? parsed.brokerImportLog.slice(-40) : [],
+          income: sanitizeIncome(parsed?.income),
+          dcaSchedule: sanitizeDcaSchedule(parsed?.dcaSchedule),
           assets,
         });
         showToast(`Portfolio imported — ${assets.length} assets loaded.`);
@@ -1037,9 +1145,9 @@ function App() {
               <div className="hdr-sub-row">
                 <span className="hdr-sub">{state.assets.length} assets · Buy-only · <PlatformBadge platformId={state.platform}/></span>
                 <span className="hdr-sep">·</span>
-                <button className="dca-pill" onClick={() => setDcaPickerOpen(true)} title="Open DCA editor">
+                <button className="dca-pill" onClick={() => setDcaPickerOpen(true)} title={savingsRatePct != null ? `${savingsRatePct.toFixed(1)}% of net income — click to edit` : "Open DCA editor"}>
                   <Icon name="zap" style={{ width:12, height:12 }}/>
-                  <span className="mono">{cy}{state.dca}/mo</span>
+                  <span className="mono">{cy}{state.dca}/mo{savingsRatePct != null ? ` · ${savingsRatePct.toFixed(0)}%` : ""}</span>
                   <Icon name="edit" style={{ width:10, height:10, opacity:0.5 }}/>
                 </button>
               </div>
@@ -1075,7 +1183,14 @@ function App() {
             <div className={`kpi-grid ${loaded ? "in" : ""}`} role="region" aria-label="Portfolio summary">
               {[
                 { l:"Portfolio",          v:`${cy}${Math.round(total).toLocaleString()}`,                  s:"Current value",   c:"var(--accent-blue)",   icon:"wallet"   },
-                { l:"Monthly DCA",        v:`${cy}${state.dca}`,                                           s:"Per contribution",c:"var(--accent-indigo)", icon:"zap"      },
+                {
+                  l:"Monthly DCA",
+                  v:`${cy}${state.dca}`,
+                  s: savingsRatePct != null
+                    ? `${savingsRatePct.toFixed(1)}% of ${cy}${state.income.monthlyNet} net`
+                    : (upcomingDcaChange ? `Next: ${cy}${upcomingDcaChange.amount} from ${upcomingDcaChange.effectiveFrom}` : "Per contribution"),
+                  c:"var(--accent-indigo)", icon:"zap",
+                },
                 { l:`${state.projectionMonths}-Mo Target`, v:`${cy}${Math.round(projection.finalTotal).toLocaleString()}`, s:`+${cy}${(state.dca * state.projectionMonths).toLocaleString()}`, c:"var(--accent-green)", icon:"trendUp" },
                 { l:"Proj. Drift",        v:`${projAvgDrift.toFixed(1)}%`,                                s:`Avg abs · ${state.projectionMonths}mo`, c: projAvgDrift<1?"var(--accent-green)":projAvgDrift<2.5?"var(--accent-amber)":"var(--accent-red)", icon:"sliders" },
               ].map((k, i) => (
@@ -1097,6 +1212,13 @@ function App() {
           <div className="banner banner-warn" role="alert">
             <Icon name="warning" style={{ width:16, height:16, flexShrink:0 }}/>
             <span>Target allocations sum to <strong>{targetSum.toFixed(2)}%</strong> — must equal 100%. Fix in Settings → Assets, or click Normalise.</span>
+          </div>
+        )}
+
+        {upcomingDcaChange && (
+          <div className="banner banner-info" role="status">
+            <Icon name="calendar" style={{ width:16, height:16, flexShrink:0 }}/>
+            <span>Scheduled DCA change: <strong>{cy}{upcomingDcaChange.amount}/mo</strong> from <strong>{upcomingDcaChange.effectiveFrom}</strong>{upcomingDcaChange.note ? ` — ${upcomingDcaChange.note}` : ""}.</span>
           </div>
         )}
 
@@ -1213,6 +1335,10 @@ function App() {
           alertsEnabled={state.alerts.enabled}
           onToggleAlerts={(enabled) => setState(s => ({ ...s, alerts: { ...s.alerts, enabled } }))}
           brokerImportLog={state.brokerImportLog}
+          onUpdateIncome={updateIncome}
+          onAddScheduleEntry={addDcaScheduleEntry}
+          onRemoveScheduleEntry={removeDcaScheduleEntry}
+          onApplyScheduledDca={applyScheduledDca}
         />
       )}
 
@@ -1220,6 +1346,7 @@ function App() {
         <DcaPickerModal
           cy={cy}
           currentValue={state.dca}
+          income={state.income}
           onClose={() => setDcaPickerOpen(false)}
           onSave={applyDcaFromPicker}
         />
@@ -1940,7 +2067,7 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, brokerSource, onBrokerSourceChange, onTestBrokerApi, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [] }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, brokerSource, onBrokerSourceChange, onTestBrokerApi, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
@@ -1974,9 +2101,10 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
   }, [state.assets]);
 
   const TABS = [
-    { id:"general", label:"General",  icon:"sliders" },
-    { id:"assets",  label:"Assets",   icon:"layers"  },
-    { id:"data",    label:"Data",     icon:"wallet"  },
+    { id:"general",  label:"General",  icon:"sliders" },
+    { id:"cashflow", label:"Cashflow", icon:"handDollar" },
+    { id:"assets",   label:"Assets",   icon:"layers"  },
+    { id:"data",     label:"Data",     icon:"wallet"  },
   ];
 
   return (
@@ -2168,6 +2296,20 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
             </div>
 
           </div>
+        )}
+
+        {/* ══════════ CASHFLOW ══════════ */}
+        {section === "cashflow" && (
+          <CashflowSection
+            state={state}
+            cy={state.currency}
+            onUpdateIncome={onUpdateIncome}
+            onUpdateDca={onUpdateDca}
+            onAddScheduleEntry={onAddScheduleEntry}
+            onRemoveScheduleEntry={onRemoveScheduleEntry}
+            onApplyScheduledDca={onApplyScheduledDca}
+            showToast={showToast}
+          />
         )}
 
         {/* ══════════ ASSETS ══════════ */}
@@ -2376,6 +2518,212 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
   );
 }
 
+// ─── CASHFLOW SECTION ─────────────────────────────────────────
+function CashflowSection({ state, cy, onUpdateIncome, onUpdateDca, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, showToast }) {
+  const [incomeDraft, setIncomeDraft] = useState(String(state.income?.monthlyNet || ""));
+  const [incomeLabel, setIncomeLabel] = useState(state.income?.label || "");
+  const [newAmount, setNewAmount] = useState("");
+  const [newDate, setNewDate] = useState(addMonths(currentMonthYM(), 1));
+  const [newNote, setNewNote] = useState("");
+
+  useEffect(() => { setIncomeDraft(String(state.income?.monthlyNet || "")); }, [state.income?.monthlyNet]);
+  useEffect(() => { setIncomeLabel(state.income?.label || ""); }, [state.income?.label]);
+
+  const income = state.income?.monthlyNet || 0;
+  const schedule = state.dcaSchedule || [];
+  const savingsPct = income > 0 ? (state.dca / income) * 100 : null;
+  const suggestions = income > 0
+    ? [0.10, 0.15, 0.20, 0.25].map(rate => ({ pct: rate * 100, amount: Math.round(income * rate) }))
+    : [];
+
+  // Compute next 12 months of DCA contributions using the schedule
+  const next12 = useMemo(() => {
+    let totalDca = 0;
+    let monthly = [];
+    let ym = currentMonthYM();
+    for (let i = 0; i < 12; i++) {
+      const amt = activeDcaFromSchedule(schedule, state.dca, ym);
+      monthly.push({ ym, amount: amt });
+      totalDca += amt;
+      ym = addMonths(ym, 1);
+    }
+    return { monthly, totalDca };
+  }, [schedule, state.dca]);
+
+  const saveIncome = () => {
+    const n = sanitizeNum(incomeDraft, 0, 1_000_000, 0);
+    onUpdateIncome({ monthlyNet: n, label: incomeLabel });
+    showToast("Income updated");
+  };
+
+  const submitNewEntry = () => {
+    const amt = sanitizeNum(newAmount, 1, 1_000_000, 0);
+    if (!amt) { showToast("Enter a valid DCA amount", "error"); return; }
+    if (!/^\d{4}-\d{2}$/.test(newDate)) { showToast("Pick a valid month (YYYY-MM)", "error"); return; }
+    onAddScheduleEntry({ amount: amt, effectiveFrom: newDate, note: newNote.trim() });
+    setNewAmount("");
+    setNewNote("");
+    setNewDate(addMonths(newDate, 1));
+    showToast("Schedule entry added");
+  };
+
+  const todayYM = currentMonthYM();
+
+  return (
+    <div key="cashflow" className="modal-body">
+      <div className="settings-group">
+        <div className="settings-group-label">Monthly Income</div>
+        <div className="settings-group-desc">Track your net income to see your DCA as a savings rate. Stored locally on your device.</div>
+        <div className="settings-card">
+          <SettingRow title="Monthly Net Income" desc="Take-home pay after taxes & deductions. Use a 12-month average.">
+            <div className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" min="0" max="1000000" step="50"
+                value={incomeDraft}
+                onChange={e => setIncomeDraft(e.target.value)}
+                onBlur={saveIncome}
+                onKeyDown={e => { if (e.key === "Enter") { saveIncome(); e.target.blur(); } }}
+                style={{ width: 100 }} aria-label="Monthly net income"/>
+            </div>
+          </SettingRow>
+          <SettingDivider/>
+          <SettingRow title="Label" desc="Optional context (e.g. role / employer)">
+            <input className="asset-text-inp" value={incomeLabel}
+              onChange={e => setIncomeLabel(e.target.value.slice(0, 60))}
+              onBlur={saveIncome}
+              placeholder="e.g. Team Lead full-time"
+              style={{ width: 180, fontSize: 12 }} aria-label="Income label"/>
+          </SettingRow>
+          {income > 0 && (
+            <>
+              <SettingDivider/>
+              <SettingRow title="Savings Rate" desc={`${cy}${state.dca}/mo DCA ÷ ${cy}${income}/mo net income`}>
+                <div className={`target-sum-pill ${savingsPct >= 15 ? "ok" : "err"}`}>
+                  <Icon name="trendUp" style={{ width:13, height:13 }}/>
+                  {savingsPct.toFixed(1)}%
+                </div>
+              </SettingRow>
+            </>
+          )}
+        </div>
+      </div>
+
+      {income > 0 && (
+        <div className="settings-group" style={{ marginTop:20 }}>
+          <div className="settings-group-label">DCA Suggestions</div>
+          <div className="settings-group-desc">Common savings rates based on your net income.</div>
+          <div className="settings-card">
+            <div className="dca-preset-grid" role="group" style={{ padding: 12 }}>
+              {suggestions.map(sug => (
+                <button key={sug.pct} className={`dca-preset-btn mono ${state.dca === sug.amount ? "active" : ""}`}
+                  onClick={() => onUpdateDca(String(sug.amount))}>
+                  <span style={{ fontWeight: 700 }}>{cy}{sug.amount}</span>
+                  <span style={{ fontSize: 10, opacity: 0.7 }}>{sug.pct.toFixed(0)}%</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="settings-group" style={{ marginTop:20 }}>
+        <div className="settings-group-label">DCA Schedule</div>
+        <div className="settings-group-desc">Plan future DCA changes (e.g. salary increase, lifestyle change). When a date hits, the amount applies automatically.</div>
+
+        <div className="settings-card">
+          <div className="schedule-add-grid">
+            <div className="editor-inp-wrap sm">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" min="1" max="1000000" step="10"
+                value={newAmount}
+                onChange={e => setNewAmount(e.target.value)}
+                placeholder="Amount"
+                style={{ width: 90 }} aria-label="New schedule amount"/>
+            </div>
+            <input className="editor-inp mono" type="month"
+              value={newDate}
+              onChange={e => setNewDate(e.target.value)}
+              style={{ width: 130 }} aria-label="Effective month"/>
+            <input className="asset-text-inp" type="text"
+              value={newNote}
+              onChange={e => setNewNote(e.target.value.slice(0, 80))}
+              placeholder="Note (optional)"
+              style={{ flex: 1, minWidth: 100, fontSize: 12 }} aria-label="Schedule note"/>
+            <button className="btn-primary sm" onClick={submitNewEntry}>
+              <Icon name="plus" style={{ width:13, height:13 }}/>Add
+            </button>
+          </div>
+        </div>
+
+        {schedule.length > 0 ? (
+          <div className="schedule-list">
+            {schedule.map(item => {
+              const isPast = item.effectiveFrom <= todayYM;
+              return (
+                <div key={item.id} className={`schedule-row ${isPast ? "past" : ""}`}>
+                  <div className="schedule-row-main">
+                    <span className="schedule-row-date mono">{item.effectiveFrom}</span>
+                    <span className="schedule-row-amount mono">{cy}{item.amount}/mo</span>
+                    {item.note && <span className="schedule-row-note">{item.note}</span>}
+                    {isPast && <span className="schedule-row-tag">applied</span>}
+                  </div>
+                  <div className="schedule-row-actions">
+                    {!isPast && (
+                      <button className="btn-ghost xs" onClick={() => onApplyScheduledDca(item.amount)} title="Apply now">
+                        Apply now
+                      </button>
+                    )}
+                    <button className="icon-btn danger-hover" onClick={() => onRemoveScheduleEntry(item.id)} aria-label="Delete schedule entry">
+                      <Icon name="close" style={{ width:12, height:12 }}/>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="schedule-empty">
+            <Icon name="calendar" style={{ width:18, height:18, opacity:0.6 }}/>
+            <span>No scheduled changes yet. Add one above to plan ahead.</span>
+          </div>
+        )}
+      </div>
+
+      <div className="settings-group" style={{ marginTop:20 }}>
+        <div className="settings-group-label">12-Month Outlook</div>
+        <div className="settings-group-desc">Projected DCA contributions over the next 12 months, based on schedule.</div>
+        <div className="settings-card">
+          <SettingRow title="Total DCA (next 12 mo)" desc="Sum of monthly contributions">
+            <div className="target-sum-pill ok">
+              <Icon name="trendUp" style={{ width:13, height:13 }}/>
+              {cy}{next12.totalDca.toLocaleString()}
+            </div>
+          </SettingRow>
+          {income > 0 && (
+            <>
+              <SettingDivider/>
+              <SettingRow title="Avg savings rate" desc="DCA total ÷ (12 × monthly net income)">
+                <div className={`target-sum-pill ${(next12.totalDca / (income * 12) * 100) >= 15 ? "ok" : "err"}`}>
+                  <Icon name="trendUp" style={{ width:13, height:13 }}/>
+                  {((next12.totalDca / (income * 12)) * 100).toFixed(1)}%
+                </div>
+              </SettingRow>
+            </>
+          )}
+        </div>
+        <div className="outlook-mini-grid">
+          {next12.monthly.map(m => (
+            <div key={m.ym} className="outlook-mini-cell">
+              <span className="outlook-mini-ym mono">{m.ym}</span>
+              <span className="outlook-mini-amt mono">{cy}{m.amount}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ASSET ROW (controlled) ───────────────────────────────────
 function AssetRow({ asset, color, currency, onUpdate, onRemove }) {
   const [v, setV] = useState({ ticker: asset.ticker, name: asset.name, current: String(asset.current), target: String(asset.target), holdings: asset.holdings != null ? String(asset.holdings) : "" });
@@ -2468,13 +2816,18 @@ function ConfirmModal({ icon, iconColor, title, body, confirmLabel, danger, onCa
   );
 }
 
-function DcaPickerModal({ cy, currentValue, onClose, onSave }) {
+function DcaPickerModal({ cy, currentValue, income, onClose, onSave }) {
   const [draft, setDraft] = useState(String(currentValue));
-  const presetValues = [10, 20, 50, 100, 130, 150, 200, 300];
+  const defaultPresets = [10, 20, 50, 100, 130, 150, 200, 300];
+  const incomeNet = income?.monthlyNet || 0;
+  const presetValues = incomeNet > 0
+    ? [0.05, 0.10, 0.15, 0.20, 0.25, 0.30].map(r => Math.round(incomeNet * r))
+    : defaultPresets;
 
   useEffect(() => { setDraft(String(currentValue)); }, [currentValue]);
 
   const parsedDraft = sanitizeNum(draft, 1, 1_000_000, currentValue);
+  const draftPct = incomeNet > 0 ? (parsedDraft / incomeNet) * 100 : null;
 
   return (
     <div className="overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="DCA amount editor">
@@ -2483,18 +2836,22 @@ function DcaPickerModal({ cy, currentValue, onClose, onSave }) {
           <Icon name="zap" style={{ width:24, height:24, color:"var(--accent-indigo)" }}/>
         </div>
         <h3>Set Monthly DCA</h3>
-        <p>Select a preset or enter a custom monthly amount.</p>
+        <p>{incomeNet > 0 ? `Pick a savings rate or enter a custom amount. Net income: ${cy}${incomeNet}/mo.` : "Select a preset or enter a custom monthly amount."}</p>
 
         <div className="dca-preset-grid" role="group" aria-label="DCA presets">
-          {presetValues.map(v => (
-            <button
-              key={v}
-              className={`dca-preset-btn mono ${parsedDraft === v ? "active" : ""}`}
-              onClick={() => setDraft(String(v))}
-            >
-              {cy}{v}
-            </button>
-          ))}
+          {presetValues.map((v, i) => {
+            const pct = incomeNet > 0 ? [5, 10, 15, 20, 25, 30][i] : null;
+            return (
+              <button
+                key={v + "-" + i}
+                className={`dca-preset-btn mono ${parsedDraft === v ? "active" : ""}`}
+                onClick={() => setDraft(String(v))}
+              >
+                <span>{cy}{v}</span>
+                {pct != null && <span style={{ display:"block", fontSize:10, opacity:0.7, marginTop:2 }}>{pct}%</span>}
+              </button>
+            );
+          })}
         </div>
 
         <div className="editor-inp-wrap dca-modal-input-wrap">
@@ -2513,6 +2870,12 @@ function DcaPickerModal({ cy, currentValue, onClose, onSave }) {
           />
           <span className="editor-sym">/mo</span>
         </div>
+
+        {draftPct != null && (
+          <div className="dca-pct-hint" style={{ textAlign:"center", fontSize:12, color:"var(--text3)", marginTop:8 }}>
+            {draftPct.toFixed(1)}% of your monthly net income
+          </div>
+        )}
 
         <div className="modal-btns">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
@@ -2766,9 +3129,38 @@ function getCSS() { return `
 .dca-pill:hover { background:rgba(99,102,241,.18); border-color:rgba(99,102,241,.35); }
 .dca-modal { max-width:460px; text-align:center; }
 .dca-preset-grid { margin-top:14px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
-.dca-preset-btn { border:1px solid var(--border2); background:var(--surface); color:var(--text2); border-radius:9px; padding:8px 10px; cursor:pointer; font-size:12px; font-weight:600; transition:all .18s; }
+.dca-preset-btn { border:1px solid var(--border2); background:var(--surface); color:var(--text2); border-radius:9px; padding:8px 10px; cursor:pointer; font-size:12px; font-weight:600; transition:all .18s; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; min-height:42px; }
 .dca-preset-btn:hover { border-color:rgba(99,102,241,.38); color:var(--accent-indigo); background:rgba(99,102,241,.08); }
 .dca-preset-btn.active { border-color:rgba(99,102,241,.45); color:var(--accent-indigo); background:rgba(99,102,241,.12); }
+
+/* ── DCA SCHEDULE ── */
+.schedule-add-grid { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px; }
+.schedule-list { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+.schedule-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid var(--border2); border-radius:10px; background:var(--surface); transition:border-color .18s, background .18s; }
+.schedule-row:hover { border-color:rgba(99,102,241,.3); }
+.schedule-row.past { opacity:0.55; }
+.schedule-row-main { display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:0; }
+.schedule-row-date { font-size:12px; font-weight:600; color:var(--text2); background:var(--bg2); padding:2px 8px; border-radius:6px; }
+.schedule-row-amount { font-size:13px; font-weight:700; color:var(--accent-indigo); }
+.schedule-row-note { font-size:12px; color:var(--text3); }
+.schedule-row-tag { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--accent-green); background:rgba(16,185,129,0.1); padding:2px 7px; border-radius:5px; }
+.schedule-row-actions { display:flex; gap:4px; align-items:center; flex-shrink:0; }
+.btn-ghost.xs { padding:4px 10px; font-size:11px; font-weight:600; }
+.schedule-empty { display:flex; align-items:center; gap:10px; padding:18px; color:var(--text3); font-size:13px; border:1px dashed var(--border2); border-radius:10px; margin-top:10px; }
+.outlook-mini-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-top:12px; }
+.outlook-mini-cell { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 4px; border:1px solid var(--border2); background:var(--surface); border-radius:8px; transition:border-color .15s, background .15s; }
+.outlook-mini-cell:hover { border-color:rgba(99,102,241,.32); background:rgba(99,102,241,.05); }
+.outlook-mini-ym { font-size:10px; color:var(--text3); font-weight:500; }
+.outlook-mini-amt { font-size:13px; font-weight:700; color:var(--accent-indigo); margin-top:2px; }
+@media (max-width: 580px) {
+  .outlook-mini-grid { grid-template-columns:repeat(3,1fr); }
+}
+@media (max-width: 580px) {
+  .schedule-add-grid { flex-direction:column; align-items:stretch; }
+  .schedule-add-grid > * { width:100% !important; }
+  .schedule-row { flex-direction:column; align-items:flex-start; gap:8px; }
+  .schedule-row-actions { width:100%; justify-content:flex-end; }
+}
 .dca-modal-input-wrap { margin:14px auto 0; width:fit-content; }
 
 /* ── THEME BTN ── */
@@ -2796,7 +3188,10 @@ function getCSS() { return `
 /* ── BANNER ── */
 .banner { display:flex; align-items:flex-start; gap:9px; padding:12px 16px; border-radius:11px; font-size:13px; margin-bottom:16px; line-height:1.55; }
 .banner-warn { background:rgba(245,158,11,.06); border:1px solid rgba(245,158,11,.22); color:var(--accent-amber); }
-.banner strong { color:var(--accent-amber); }
+.banner-warn strong { color:var(--accent-amber); }
+.banner-info { background:rgba(99,102,241,.06); border:1px solid rgba(99,102,241,.22); color:var(--accent-indigo); }
+.banner-info strong { color:var(--accent-indigo); }
+.banner strong { color:inherit; }
 
 /* ── TABS ── */
 .tabs { display:flex; gap:3px; margin-bottom:20px; padding:4px; background:var(--surface); border-radius:14px; border:1px solid var(--border); overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
@@ -3097,8 +3492,8 @@ function getCSS() { return `
 
 /* ── Assets table ── */
 .assets-table { display:flex; flex-direction:column; gap:6px; }
-.assets-thead { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 32px; gap:9px; padding:0 12px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
-.assets-trow { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 32px; gap:9px; align-items:center; padding:11px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:border-color .18s,background .18s; }
+.assets-thead { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 0.9fr 32px; gap:9px; padding:0 12px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
+.assets-trow { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 0.9fr 32px; gap:9px; align-items:center; padding:11px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:border-color .18s,background .18s; }
 .assets-trow:hover { border-color:var(--border2); background:var(--surface2); }
 .asset-name-cell { display:flex; align-items:center; gap:9px; min-width:0; }
 .asset-text-inp { background:transparent; border:none; outline:none; color:var(--text); font-family:inherit; display:block; line-height:1.35; }
@@ -3192,8 +3587,8 @@ function getCSS() { return `
 .editor-grid { grid-template-columns:1fr; }
 .h-grid { grid-template-columns:1fr; }
 .h-kpi-v { font-size:24px; }
-.assets-thead,.assets-trow { grid-template-columns:2fr 1fr 1fr 36px; }
-.assets-thead span:nth-child(4),.assets-trow .editor-inp-wrap:last-of-type { display:none; }
+.assets-thead,.assets-trow { grid-template-columns:2fr 1fr 1fr 1fr 36px; }
+.assets-thead span:nth-child(5),.assets-trow .editor-inp-wrap:nth-of-type(3) { display:none; }
 .close-month-section { flex-direction:column; align-items:flex-start; }
 .setting-row { flex-direction:column; align-items:flex-start; gap:10px; padding:12px 14px; }
 .setting-ctrl { align-self:flex-start; }
@@ -3240,8 +3635,13 @@ function getCSS() { return `
 .modal-tab { padding:10px 10px; font-size:12px; gap:5px; }
 .modal-body { padding:14px; }
 .settings-group-label { font-size:10px; }
-.assets-thead,.assets-trow { grid-template-columns:1fr 1fr 36px; }
-.assets-thead span:nth-child(2),.assets-trow select { display:none; }
+.assets-thead { display:none; }
+.assets-trow { grid-template-columns:1fr; gap:8px; padding:14px; }
+.assets-trow > * { width:100%; }
+.assets-trow .editor-inp-wrap { justify-self:start; }
+.assets-trow .asset-name-cell { padding-bottom:6px; border-bottom:1px dashed var(--border2); }
+.assets-trow .icon-btn { position:absolute; top:10px; right:10px; }
+.assets-trow { position:relative; }
 .close-month-section { padding:14px; }
 .hist-assets { grid-template-columns:repeat(2,1fr); }
 .hist-total { font-size:22px; }
