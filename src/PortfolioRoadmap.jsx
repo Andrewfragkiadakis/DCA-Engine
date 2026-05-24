@@ -623,7 +623,7 @@ function App() {
   // ── Derived ──
   const total      = useMemo(() => state.assets.reduce((s, a) => s + a.current, 0), [state.assets]);
   const enriched   = useMemo(() => enrich(state.assets, total), [state.assets, total]);
-  const sortedDrift = useMemo(() => [...enriched].sort((a, b) => a.drift - b.drift), [enriched]);
+  const sortedDrift = useMemo(() => [...enriched].sort((a, b) => b.current - a.current), [enriched]);
   const targetSum  = useMemo(() => state.assets.reduce((s, a) => s + a.target, 0), [state.assets]);
   const targetOk   = useMemo(() => Math.abs(targetSum - 100) < 0.05, [targetSum]);
   const safetyBreach = useMemo(() => enriched.find(a => a.pct > a.target + 5), [enriched]);
@@ -1641,7 +1641,7 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
         {editOpen && (
           <div className="editor-body">
             <div className="editor-grid">
-              {assets.map(a => {
+              {[...assets].sort((a, b) => b.current - a.current).map(a => {
                 const c = CAT_COLORS[a.cat] || "#6366f1";
                 return (
                   <div key={a.ticker} className="editor-row">
