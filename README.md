@@ -76,6 +76,7 @@ Sign-in flow: `/api/auth/login` → Google consent screen → `/api/auth/callbac
 
 ```
 src/
+  main.jsx                 # entry point, mounts PortfolioRoadmap
   PortfolioRoadmap.jsx     # app shell, state, and UI components
   engine.js                # pure DCA/allocation math — unit tested
   engine.test.js
