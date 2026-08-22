@@ -10,6 +10,12 @@ This is a private, single-user app — it is not indexed by search engines and i
 
 ---
 
+![DCA Engine overview](docs/infographic.jpg)
+
+*Screens shown use seeded sample data, not real account data.*
+
+---
+
 ## Features
 
 - **Gap-weighted DCA allocation** — buys the most under-weight assets first each month
