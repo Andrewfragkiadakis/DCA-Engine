@@ -90,44 +90,9 @@ function parseTradeRepublic(records) {
   }).filter(a => a.ticker);
 }
 
-function parseIbkr(records) {
-  return records.map(r => {
-    const ticker = normalizeTicker(r.Symbol || r.Ticker || r.Conid || "");
-    const holdings = asNum(r.Quantity || r.Position || r.Shares || 0);
-    return {
-      ticker,
-      name: r.Description || r.Name || ticker || "Imported Asset",
-      current: asNum(r["Market Value"] || r["Position Value"] || r.Value || 0),
-      target: asNum(r["Target %"] || 0),
-      cat: mapCategory(r["Asset Class"] || r.Sector || ""),
-      ...(holdings > 0 ? { holdings } : {}),
-    };
-  }).filter(a => a.ticker);
-}
-
-function parseGeneric(records) {
-  return records.map(r => {
-    const ticker = normalizeTicker(r.Ticker || r.Symbol || r.Asset || "");
-    const holdings = asNum(r.Quantity || r.Holdings || r.Shares || r.Units || 0);
-    return {
-      ticker,
-      name: r.Name || ticker || "Imported Asset",
-      current: asNum(r.Current || r["Current Value"] || r.Value || 0),
-      target: asNum(r.Target || r["Target %"] || 0),
-      cat: mapCategory(r.Category || r["Asset Class"] || ""),
-      ...(holdings > 0 ? { holdings } : {}),
-    };
-  }).filter(a => a.ticker);
-}
-
-export function importBrokerCsv(csvText, broker) {
+export function importBrokerCsv(csvText) {
   const { headers, records } = parseCsv(csvText);
-  const source = String(broker || "generic").toLowerCase();
-
-  let assets = [];
-  if (source === "trade-republic") assets = parseTradeRepublic(records);
-  else if (source === "interactive-brokers" || source === "ibkr") assets = parseIbkr(records);
-  else assets = parseGeneric(records);
+  const assets = parseTradeRepublic(records);
 
   const deduped = [];
   const seen = new Set();
@@ -257,7 +222,7 @@ function guessCategoryFromName(name) {
   return "Other";
 }
 
-function parseDeNum(raw) {
+export function parseDeNum(raw) {
   // German number format: 1.234,56 → 1234.56
   const s = String(raw || "").replace(/\s/g, "").replace(/€/g, "").replace(/EUR/gi, "").trim();
   const normalized = s.replace(/\./g, "").replace(/,/g, ".");
@@ -274,9 +239,8 @@ function extractIsin(text) {
  * Parse Trade Republic securities PDF ("Depotauszug" / "Depotübersicht")
  * Extracts: ISIN, name, quantity (Stück), market value (EUR)
  */
-function parseTrSecuritiesPdf(lines) {
+export function parseTrSecuritiesPdf(lines) {
   const assets = [];
-  const fullText = lines.join("\n");
 
   // Strategy: look for ISIN patterns and extract surrounding context
   // TR securities statements list each position with:
@@ -312,8 +276,10 @@ function parseTrSecuritiesPdf(lines) {
     const searchWindow = lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 6)).join(" ");
 
     // Match "Stück" or "Anteile" patterns: "1,234 Stück" or "Stück 1,234" or "Anteile: 0,5432"
+    // The (?<![A-Za-z0-9]) guard stops this from grabbing trailing digits off an
+    // adjacent ISIN (e.g. "...BQT80 Stück" must not read "80" as the quantity).
     const qtyPatterns = [
-      /(\d[\d.,]*)\s*(?:Stück|Anteile|St\.|Stk)/i,
+      /(?<![A-Za-z0-9])(\d[\d.,]*)\s*(?:Stück|Anteile|St\.|Stk)/i,
       /(?:Stück|Anteile|St\.|Stk)[:\s]*(\d[\d.,]*)/i,
       /(?:Bestand|Menge)[:\s]*(\d[\d.,]*)/i,
     ];
@@ -363,9 +329,12 @@ function parseTrSecuritiesPdf(lines) {
  * Parse Trade Republic crypto PDF ("Kryptoauszug" / crypto statement)
  * Extracts: coin name, quantity, value (EUR)
  */
-function parseTrCryptoPdf(lines) {
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function parseTrCryptoPdf(lines) {
   const assets = [];
-  const fullText = lines.join("\n");
 
   // Strategy: crypto statements list each coin with name, quantity, and value
   // Look for known crypto names or patterns like "Bitcoin", "Ethereum", etc.
@@ -379,13 +348,13 @@ function parseTrCryptoPdf(lines) {
     let matchedName = null;
 
     for (const [key, ticker] of Object.entries(CRYPTO_TICKER_MAP)) {
-      if (line === key || line.startsWith(key + " ") || line.includes(key)) {
-        // Avoid false positives - the line should be relatively short or focused
-        if (line.length < 60) {
-          matchedTicker = ticker;
-          matchedName = key.charAt(0).toUpperCase() + key.slice(1);
-          break;
-        }
+      // Whole-word match only — substring "includes" false-matched things like
+      // "Seite 1 von 2" (page footer) against the "sei" coin key.
+      const wordBoundaryMatch = new RegExp(`\\b${escapeRegex(key)}\\b`).test(line);
+      if (wordBoundaryMatch && line.length < 60) {
+        matchedTicker = ticker;
+        matchedName = key.charAt(0).toUpperCase() + key.slice(1);
+        break;
       }
     }
 
@@ -539,26 +508,5 @@ export async function importTradeRepublicPdf(pdfBuffer) {
     totalRows: allLines.length,
     importedRows: deduped.length,
     rawLines: allLines,
-  };
-}
-
-export async function fetchBrokerPositionsAdapter(adapter, credentials = {}) {
-  const kind = String(adapter || "").toLowerCase();
-  if (!["trade-republic", "interactive-brokers"].includes(kind)) {
-    return { ok: false, error: "Unsupported adapter" };
-  }
-
-  if (!credentials.apiKey && !credentials.accessToken) {
-    return {
-      ok: false,
-      error: "Missing credentials",
-      hint: "For security, connect broker APIs via your own backend and pass only scoped tokens.",
-    };
-  }
-
-  return {
-    ok: false,
-    error: "Adapter scaffold ready",
-    hint: "Implement broker-specific OAuth/token exchange endpoint in /api/brokers/* and map to normalized positions.",
   };
 }

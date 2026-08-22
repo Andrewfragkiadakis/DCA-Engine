@@ -25,16 +25,24 @@ async function fetchJson(url) {
   }
 }
 
+function evictExpiredCacheEntries(now) {
+  for (const [key, entry] of CACHE) {
+    if (entry.expiresAt <= now) CACHE.delete(key);
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") return json(res, 405, { ok: false, error: "Method not allowed" });
 
   try {
+    const now = Date.now();
+    evictExpiredCacheEntries(now);
+
     const base = sanitizeCode(req.query.base || "USD");
     const symbolsRaw = String(req.query.symbols || "EUR,USD,GBP,CHF").split(",");
     const symbols = [...new Set(symbolsRaw.map(sanitizeCode).filter(Boolean))].slice(0, 10);
 
     const cacheKey = `${base}:${symbols.join(",")}`;
-    const now = Date.now();
     const cached = CACHE.get(cacheKey);
     if (cached && cached.expiresAt > now) {
       return json(res, 200, { ...cached.payload, cached: true });

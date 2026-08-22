@@ -1,43 +1,24 @@
-/**
- * Portfolio Roadmap — DCA Rebalancing Engine v3
- * All bugs fixed, production-ready, Vercel-deployable.
- *
- * FIXES IN THIS VERSION:
- *  ✅ Copy button: robust clipboard API + textarea execCommand fallback
- *  ✅ Export JSON/CSV: anchor appended to DOM before click, then removed
- *  ✅ Import: dead loadState.call() removed, clean parse pipeline
- *  ✅ Font sizes enlarged throughout with responsive type scale
- *  ✅ Schema v3 with forward-migration from v2
- *
- * FEATURES:
- *  ✅ Inline DCA quick-edit in header
- *  ✅ What-If DCA slider on month tabs
- *  ✅ Portfolio value sparkline in history
- *  ✅ Auto light/dark theme (system + time-of-day, 07:00–20:00)
- *  ✅ Currency selector (€ $ £ CHF)
- *  ✅ Export JSON backup / Export CSV / Import JSON
- *  ✅ Target normalise button
- *  ✅ Confirm modal before Lock In (with optional notes)
- *  ✅ Per-month gain/loss delta in history
- *  ✅ Safety valve + drift analysis
- *  ✅ Projection horizon 1–12 months
- *  ✅ Error Boundary with recovery screen
- *  ✅ Full keyboard shortcuts (ESC closes modals)
- *  ✅ Full ARIA labels + roles
- *  ✅ Print-friendly CSS
- */
+// Portfolio Roadmap — personal DCA rebalancing engine for a single Trade Republic account (EUR).
 
 import { useState, useEffect, useMemo, useCallback, useRef, Component } from "react";
 import { fetchLiveQuotes, fetchFxRates, buildLiveModel, pushLocalSnapshot, persistSnapshotRemote } from "./services/marketData";
-import { importBrokerCsv, fetchBrokerPositionsAdapter, importTradeRepublicPdf } from "./services/brokerImport";
+import { importBrokerCsv, importTradeRepublicPdf } from "./services/brokerImport";
+import {
+  sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
+  currentMonthYM, activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
+  enrich, allocate, runProjection,
+} from "./engine";
+import "./styles.css";
 
 // ─── CONSTANTS ────────────────────────────────────────────────
 const SCHEMA_VERSION = 4;
 const STORE_KEY      = "portfolio_roadmap_v4";
 const LEGACY_STORE_KEY = "portfolio_roadmap_v3";
-const CURRENCIES     = ["€", "$", "£", "CHF"];
-const CURRENCY_TO_ISO = { "€":"EUR", "$":"USD", "£":"GBP", "CHF":"CHF" };
-const ISO_TO_CURRENCY = { EUR:"€", USD:"$", GBP:"£", CHF:"CHF" };
+// This build tracks a single Trade Republic account in EUR — no multi-broker or
+// multi-currency selection, by design (see CATEGORIES below for asset classes).
+const CURRENCY_SYMBOL = "€";
+const CURRENCY_ISO    = "EUR";
+const PLATFORM_NAME   = "Trade Republic";
 const CATEGORIES     = ["Crypto", "Tech", "Dividend", "ETF", "Bond", "Commodity", "Other"];
 const CAT_COLORS     = {
   Crypto: "#FF9800", Tech: "#5C6BC0", Dividend: "#66BB6A",
@@ -59,30 +40,6 @@ const OFFICIAL_TICKER_ICONS = {
   VWCE: "vwce",
   VHYL: "vhyl",
 };
-const PLATFORMS = [
-  { id: "trade-republic",      name: "Trade Republic",      color: "#0fba48" },
-  { id: "interactive-brokers", name: "Interactive Brokers", color: "#e31837" },
-  { id: "revolut",             name: "Revolut",             color: "#4c6ef5" },
-  { id: "etoro",               name: "eToro",               color: "#11a65c" },
-  { id: "degiro",              name: "DEGIRO",              color: "#004990" },
-  { id: "robinhood",           name: "Robinhood",           color: "#00c805" },
-  { id: "coinbase",            name: "Coinbase",            color: "#0052ff" },
-  { id: "binance",             name: "Binance",             color: "#f3ba2f" },
-  { id: "scalable",            name: "Scalable Capital",    color: "#6c3af5" },
-  { id: "freedom24",           name: "Freedom24",           color: "#ff6b00" },
-  { id: "fidelity",            name: "Fidelity",            color: "#198c19" },
-  { id: "schwab",              name: "Schwab",              color: "#00a0dc" },
-  { id: "vanguard",            name: "Vanguard",            color: "#a61717" },
-  { id: "webull",              name: "Webull",              color: "#02adb4" },
-  { id: "freetrade",           name: "Freetrade",           color: "#00d5af" },
-  { id: "saxo",                name: "Saxo Bank",           color: "#1e3a5f" },
-  { id: "ig",                  name: "IG",                  color: "#0075c4" },
-  { id: "xtb",                 name: "XTB",                 color: "#e8001c" },
-  { id: "kraken",              name: "Kraken",              color: "#5741d9" },
-  { id: "bitpanda",            name: "Bitpanda",            color: "#e5304a" },
-  { id: "other",               name: "Other",               color: "#78909c" },
-];
-
 // ─── SVG ICON LIBRARY ─────────────────────────────────────────
 const Icons = {
   bitcoin:     <img src="/icons/btc.svg" alt="Bitcoin" loading="lazy" decoding="async"/>,
@@ -138,60 +95,8 @@ const Icons = {
   zap:         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
   target:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="22" y1="12" x2="15" y2="12"/><line x1="9" y1="12" x2="2" y2="12"/></svg>,
   refresh:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+  logout:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
 };
-const FAVICON_SOURCES = d => [
-  `https://www.google.com/s2/favicons?domain=${d}&sz=64`,
-  `https://icons.duckduckgo.com/ip3/${d}.ico`,
-  `https://faviconkit.com/${d}/64`,
-];
-const PLATFORM_ICON_DOMAINS = {
-  "trade-republic": "traderepublic.com",
-  "interactive-brokers": "interactivebrokers.com",
-  "revolut": "revolut.com",
-  "etoro": "etoro.com",
-  "degiro": "degiro.eu",
-  "robinhood": "robinhood.com",
-  "coinbase": "coinbase.com",
-  "binance": "binance.com",
-  "scalable": "scalable.capital",
-  "freedom24": "freedom24.com",
-  "fidelity": "fidelity.com",
-  "schwab": "schwab.com",
-  "vanguard": "vanguard.com",
-  "webull": "webull.com",
-  "freetrade": "freetrade.io",
-  "saxo": "home.saxo",
-  "ig": "ig.com",
-  "xtb": "xtb.com",
-  "kraken": "kraken.com",
-  "bitpanda": "bitpanda.com",
-};
-
-function PlatformIcon({ platform }) {
-  const [srcIndex, setSrcIndex] = useState(0);
-  const domain = PLATFORM_ICON_DOMAINS[platform.id] || "";
-  const fallbackLabel = platform.name.split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase() || "--";
-  const sources = domain ? FAVICON_SOURCES(domain) : [];
-
-  useEffect(() => {
-    setSrcIndex(0);
-  }, [platform.id]);
-
-  if (!domain || srcIndex >= sources.length) {
-    return <span className="platform-fallback" aria-hidden="true">{fallbackLabel}</span>;
-  }
-
-  return (
-    <img
-      src={sources[srcIndex]}
-      alt=""
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setSrcIndex(i => i + 1)}
-    />
-  );
-}
-
 function Icon({ name, style, className }) {
   const svg = Icons[name];
   if (!svg) return null;
@@ -201,14 +106,8 @@ function Icon({ name, style, className }) {
     </span>
   );
 }
-function PlatformBadge({ platformId }) {
-  const p = PLATFORMS.find(x => x.id === platformId) || PLATFORMS[0];
-  return (
-    <span className="platform-badge" style={{ "--p-color": p.color }}>
-      <span className="platform-ico" aria-hidden="true"><PlatformIcon platform={p}/></span>
-      <span>{p.name}</span>
-    </span>
-  );
+function PlatformBadge() {
+  return <span className="platform-badge">{PLATFORM_NAME}</span>;
 }
 
 // ─── CLIPBOARD UTILITY (with fallback) ────────────────────────
@@ -236,6 +135,32 @@ function copyToClipboard(text) {
   });
 }
 
+// ─── FOCUS TRAP (modals) ───────────────────────────────────────
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea, input:not([disabled]), select, [tabindex]:not([tabindex="-1"])';
+function useFocusTrap(containerRef, active = true) {
+  useEffect(() => {
+    if (!active) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const handleKeyDown = (e) => {
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    container.addEventListener("keydown", handleKeyDown);
+    return () => container.removeEventListener("keydown", handleKeyDown);
+  }, [containerRef, active]);
+}
+
 // ─── DOWNLOAD UTILITY ─────────────────────────────────────────
 function triggerDownload(content, filename, mimeType) {
   const blob = new Blob([content], { type: mimeType });
@@ -254,26 +179,24 @@ function triggerDownload(content, filename, mimeType) {
 }
 
 // ─── SANITISATION ─────────────────────────────────────────────
-function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
-function sanitizeNum(v, lo, hi, fallback) {
-  const n = parseFloat(v);
-  return isNaN(n) || !isFinite(n) ? fallback : clamp(n, lo, hi);
-}
-function sanitizeStr(v, maxLen = 32) {
-  if (typeof v !== "string") return "";
-  return v.replace(/[<>"'`]/g, "").trim().slice(0, maxLen);
-}
 function sanitizeAsset(a) {
   if (!a || typeof a !== "object") return null;
   const holdings = a.holdings != null ? sanitizeNum(a.holdings, 0, 1_000_000_000, null) : null;
+  const current = sanitizeNum(a.current, 0, 10_000_000, 0);
+  // costBasis tracks actual money invested. If missing (fresh asset, older backup, or
+  // an import that only gives market value), seed it from current value — this means
+  // unrealized P&L starts at zero and becomes accurate from here forward via Lock In buys.
+  const costBasis = sanitizeNum(a.costBasis, 0, 10_000_000, current);
   return {
     name:    sanitizeStr(a.name || "Asset", 40),
     ticker:  sanitizeStr((a.ticker || "???").toUpperCase(), 10).replace(/[^A-Z0-9.&]/g, "") || "???",
     cat:     CATEGORIES.includes(a.cat) ? a.cat : "Other",
-    current: sanitizeNum(a.current, 0, 10_000_000, 0),
+    current,
     target:  sanitizeNum(a.target,  0, 100, 0),
     icon:    typeof a.icon === "string" && Icons[a.icon] ? a.icon : "barChart",
+    costBasis,
     ...(holdings != null ? { holdings } : {}),
+    ...(typeof a._isin === "string" ? { _isin: a._isin.slice(0, 16) } : {}),
   };
 }
 
@@ -294,21 +217,20 @@ const DEFAULT_STATE = {
   schemaVersion: SCHEMA_VERSION,
   assets: DEFAULT_ASSETS.map(a => ({ ...a })),
   dca: 130,
-  currency: "€",
   theme: "auto",
   projectionMonths: 3,
   history: [],
-  platform: "trade-republic",
   income: {
     monthlyNet: 0,
     label: "",
     asOf: null,
   },
   dcaSchedule: [],
+  dcaAutoAppliedIds: [],
+  lastBackupAt: null,
   live: {
     enabled: false,
     refreshSec: 60,
-    baselineTotal: null,
     lastFetchedAt: null,
     providerHealth: {},
     unresolved: [],
@@ -328,50 +250,6 @@ function sanitizeIncome(v) {
     label: typeof v.label === "string" ? v.label.slice(0, 60) : "",
     asOf: typeof v.asOf === "string" ? v.asOf : null,
   };
-}
-
-function sanitizeDcaSchedule(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .map(item => {
-      if (!item || typeof item !== "object") return null;
-      const amount = sanitizeNum(item.amount, 0, 1_000_000, 0);
-      const effectiveFrom = typeof item.effectiveFrom === "string" && /^\d{4}-\d{2}$/.test(item.effectiveFrom) ? item.effectiveFrom : null;
-      if (!effectiveFrom) return null;
-      return {
-        id: typeof item.id === "string" ? item.id.slice(0, 32) : `sch-${Math.random().toString(36).slice(2, 9)}`,
-        effectiveFrom,
-        amount,
-        note: typeof item.note === "string" ? item.note.slice(0, 80) : "",
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))
-    .slice(0, 24);
-}
-
-function currentMonthYM() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function activeDcaFromSchedule(schedule, baseDca, ym = currentMonthYM()) {
-  if (!Array.isArray(schedule) || !schedule.length) return baseDca;
-  const past = schedule.filter(s => s.effectiveFrom <= ym).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
-  return past[0] ? past[0].amount : baseDca;
-}
-
-function nextDcaFromSchedule(schedule, ym = currentMonthYM()) {
-  if (!Array.isArray(schedule) || !schedule.length) return null;
-  return schedule.find(s => s.effectiveFrom > ym) || null;
-}
-
-function addMonths(ym, n) {
-  const [y, m] = ym.split("-").map(Number);
-  const total = y * 12 + (m - 1) + n;
-  const ny = Math.floor(total / 12);
-  const nm = (total % 12) + 1;
-  return `${ny}-${String(nm).padStart(2, "0")}`;
 }
 
 // ─── STORAGE (versioned) ──────────────────────────────────────
@@ -400,16 +278,13 @@ function loadState() {
       ...p,
       assets,
       dca:              sanitizeNum(p.dca, 1, 1_000_000, 130),
-      currency:         CURRENCIES.includes(p.currency) ? p.currency : "€",
       theme:            ["dark","light","auto"].includes(p.theme) ? p.theme : "auto",
       projectionMonths: sanitizeNum(p.projectionMonths, 1, 12, 3),
       history:          Array.isArray(p.history) ? p.history.slice(-120) : [],
       schemaVersion:    SCHEMA_VERSION,
-      platform:         PLATFORMS.some(x => x.id === p.platform) ? p.platform : "trade-republic",
       live: {
         enabled: !!p?.live?.enabled,
         refreshSec: sanitizeNum(p?.live?.refreshSec, 15, 3600, 300),
-        baselineTotal: p?.live?.baselineTotal == null ? null : sanitizeNum(p.live.baselineTotal, 0, 100_000_000, 0),
         lastFetchedAt: typeof p?.live?.lastFetchedAt === "string" ? p.live.lastFetchedAt : null,
         providerHealth: p?.live?.providerHealth && typeof p.live.providerHealth === "object" ? p.live.providerHealth : {},
         unresolved: Array.isArray(p?.live?.unresolved) ? p.live.unresolved.slice(0, 20) : [],
@@ -424,6 +299,8 @@ function loadState() {
       brokerImportLog: Array.isArray(p?.brokerImportLog) ? p.brokerImportLog.slice(-40) : [],
       income: sanitizeIncome(p?.income),
       dcaSchedule: sanitizeDcaSchedule(p?.dcaSchedule),
+      dcaAutoAppliedIds: Array.isArray(p?.dcaAutoAppliedIds) ? p.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
+      lastBackupAt: typeof p?.lastBackupAt === "string" ? p.lastBackupAt : null,
     };
   } catch { return null; }
 }
@@ -438,53 +315,6 @@ function resolveTheme(pref) {
   if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
   const h = new Date().getHours();
   return h >= 7 && h < 20 ? "light" : "dark";
-}
-
-// ─── ENGINE ───────────────────────────────────────────────────
-function enrich(list, total) {
-  return list.map(a => {
-    const pct   = total > 0 ? (a.current / total) * 100 : 0;
-    const drift = pct - a.target;
-    const gap   = (a.target / 100) * total - a.current;
-    return { ...a, pct, drift, gap };
-  });
-}
-
-function allocate(portfolio, total, budget) {
-  if (budget <= 0) return [];
-  const items     = enrich(portfolio, total);
-  const under     = items.filter(i => i.gap > 0).sort((a, b) => b.gap - a.gap);
-  const totalGap  = under.reduce((s, i) => s + i.gap, 0);
-  if (totalGap <= 0 || under.length === 0) {
-    const each = Math.floor(budget / items.length);
-    const rem  = budget - each * items.length;
-    return items.map((i, idx) => ({ ...i, buy: each + (idx === 0 ? rem : 0) })).filter(i => i.buy > 0);
-  }
-  let rem = budget;
-  const buys = [];
-  for (const item of under) {
-    let alloc = Math.round((item.gap / totalGap) * budget);
-    alloc = Math.min(alloc, rem);
-    if (alloc > 0) { buys.push({ ...item, buy: alloc }); rem -= alloc; }
-  }
-  if (rem > 0 && buys.length > 0) buys[0].buy += rem;
-  return buys;
-}
-
-function runProjection(assets, total, dca, months) {
-  const steps = [];
-  let port = assets.map(a => ({ ...a }));
-  let tot  = total;
-  for (let m = 0; m < months; m++) {
-    const buys = allocate(port, tot, dca);
-    steps.push({ month: m + 1, buys, total: tot, port: port.map(a => ({ ...a })) });
-    port = port.map(a => {
-      const b = buys.find(x => x.ticker === a.ticker);
-      return b ? { ...a, current: Math.round((a.current + b.buy) * 100) / 100 } : { ...a };
-    });
-    tot = Math.round((tot + dca) * 100) / 100;
-  }
-  return { steps, finalPort: enrich(port, tot), finalTotal: tot };
 }
 
 // ─── EXPORT HELPERS ───────────────────────────────────────────
@@ -558,7 +388,6 @@ function App() {
   const [dcaPickerOpen, setDcaPickerOpen] = useState(false);
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState("");
-  const [brokerSource, setBrokerSource] = useState("trade-republic");
   const toastRef    = useRef(null);
   const fileInputRef = useRef(null);
   const brokerFileInputRef = useRef(null);
@@ -592,6 +421,25 @@ function App() {
   useEffect(() => { setTimeout(() => setLoaded(true), 80); }, []);
   useEffect(() => { saveState(state); }, [state]);
 
+  // Weekly auto-backup: localStorage is the only copy of this data, so periodically
+  // download a JSON snapshot without requiring the user to remember to export.
+  useEffect(() => {
+    if (!loaded) return;
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const last = state.lastBackupAt ? new Date(state.lastBackupAt).getTime() : null;
+    if (last == null) {
+      // First run on this device: establish a baseline instead of downloading immediately.
+      setState(s => ({ ...s, lastBackupAt: new Date().toISOString() }));
+      return;
+    }
+    if (Date.now() - last >= WEEK_MS) {
+      exportJSON(state);
+      setState(s => ({ ...s, lastBackupAt: new Date().toISOString() }));
+      showToast("Weekly backup downloaded automatically", "info");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
   // Tab switching with transition
   const switchTab = useCallback((newTab) => {
     if (newTab === tab) return;
@@ -608,7 +456,7 @@ function App() {
   useEffect(() => {
     const h = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen(v => !v); }
-      if (e.key === "Escape") { setSettingsOpen(false); setConfirmLock(false); setConfirmReset(false); setDcaPickerOpen(false); setCmdOpen(false); }
+      if (e.key === "Escape") { setSettingsOpen(false); setConfirmLock(false); setConfirmReset(false); setDcaPickerOpen(false); setCmdOpen(false); setPendingRemove(null); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -638,8 +486,8 @@ function App() {
   );
   const projMaxDrift = useMemo(() => Math.max(0, ...projection.finalPort.map(a => Math.abs(a.drift))), [projection.finalPort]);
   const projAligned  = useMemo(() => projection.finalPort.filter(a => Math.abs(a.drift) < 1).length, [projection.finalPort]);
-  const cy = state.currency;
-  const isoCurrency = CURRENCY_TO_ISO[cy] || "USD";
+  const cy = CURRENCY_SYMBOL;
+  const isoCurrency = CURRENCY_ISO;
   const liveModel = useMemo(() => {
     const quoteData = state?.live?.quoteData || null;
     const fxData = state?.live?.fxData || null;
@@ -649,25 +497,34 @@ function App() {
       quotesData: quoteData,
       fxData,
       currency: isoCurrency,
-      baselineTotal: state?.live?.baselineTotal,
     });
-  }, [state.assets, state?.live?.quoteData, state?.live?.fxData, state?.live?.baselineTotal, isoCurrency]);
+  }, [state.assets, state?.live?.quoteData, state?.live?.fxData, isoCurrency]);
 
   const upcomingDcaChange = useMemo(() => nextDcaFromSchedule(state.dcaSchedule || []), [state.dcaSchedule]);
-  const scheduledDcaNow = useMemo(() => activeDcaFromSchedule(state.dcaSchedule || [], state.dca), [state.dcaSchedule, state.dca]);
   const savingsRatePct = useMemo(() => {
     const income = state.income?.monthlyNet || 0;
     if (!income || income <= 0) return null;
     return (state.dca / income) * 100;
   }, [state.income, state.dca]);
 
-  // Apply scheduled DCA when an entry's effective date is reached
+  // Auto-apply a scheduled DCA change once, the first time its effective month arrives.
+  // After that, state.dca is yours to edit manually until the *next* schedule entry
+  // becomes due — it no longer gets silently overwritten on every render.
   useEffect(() => {
     if (!state.dcaSchedule?.length) return;
-    if (scheduledDcaNow !== state.dca) {
-      setState(s => ({ ...s, dca: scheduledDcaNow }));
-    }
-  }, [scheduledDcaNow, state.dca, state.dcaSchedule]);
+    const applied = new Set(state.dcaAutoAppliedIds || []);
+    const ym = currentMonthYM();
+    const dueUnapplied = state.dcaSchedule
+      .filter(s => s.effectiveFrom <= ym && !applied.has(s.id))
+      .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+    if (!dueUnapplied.length) return;
+    const latest = dueUnapplied[dueUnapplied.length - 1];
+    setState(s => ({
+      ...s,
+      dca: latest.amount,
+      dcaAutoAppliedIds: [...new Set([...(s.dcaAutoAppliedIds || []), ...dueUnapplied.map(x => x.id)])],
+    }));
+  }, [state.dcaSchedule, state.dcaAutoAppliedIds]);
 
   const driftAlerts = useMemo(() => {
     if (!state.alerts.enabled) return [];
@@ -688,7 +545,17 @@ function App() {
       ...s,
       assets: s.assets.map(a => {
         if (a.ticker !== ticker) return a;
-        if (field === "current") return { ...a, current: sanitizeNum(raw, 0, 10_000_000, a.current) };
+        if (field === "current") {
+          const current = sanitizeNum(raw, 0, 10_000_000, a.current);
+          // If holdings-based auto-calc is active for this asset, back-solve holdings
+          // from the manually typed value so the next live refresh doesn't silently
+          // revert your override — it'll only drift again once the price actually moves.
+          const price = liveModel?.rows?.find(r => r.ticker === ticker)?.quotePrice;
+          if (a.holdings > 0 && price > 0) {
+            return { ...a, current, holdings: Math.round((current / price) * 1e8) / 1e8 };
+          }
+          return { ...a, current };
+        }
         if (field === "target")  return { ...a, target: sanitizeNum(raw, 0, 100, a.target) };
         if (field === "ticker") {
           const clean = sanitizeStr(String(raw).toUpperCase(), 10).replace(/[^A-Z0-9.&]/g, "");
@@ -706,7 +573,7 @@ function App() {
         return a;
       }),
     }));
-  }, []);
+  }, [liveModel]);
 
   const updateDca = useCallback((v) => {
     const n = sanitizeNum(v, 1, 1_000_000, state.dca);
@@ -741,10 +608,15 @@ function App() {
   }, [showToast]);
 
   const addAsset = useCallback(() => {
-    setState(s => ({
-      ...s,
-      assets: [...s.assets, { name:"New Asset", ticker:`NEW${s.assets.length}`, cat:"ETF", current:0, target:0, icon:"barChart", holdings: 0 }],
-    }));
+    setState(s => {
+      let ticker;
+      let n = s.assets.length;
+      do { ticker = `NEW${n}`; n += 1; } while (s.assets.some(a => a.ticker === ticker));
+      return {
+        ...s,
+        assets: [...s.assets, { name:"New Asset", ticker, cat:"ETF", current:0, target:0, icon:"barChart", holdings: 0, costBasis: 0 }],
+      };
+    });
   }, []);
 
   const [pendingRemove, setPendingRemove] = useState(null);
@@ -771,11 +643,6 @@ function App() {
 
   const cancelRemoveAsset = useCallback(() => setPendingRemove(null), []);
 
-  const updatePlatform = useCallback((id) => {
-    setState(s => ({ ...s, platform: id }));
-    showToast("Platform updated");
-  }, [showToast]);
-
   const updateIncome = useCallback((patch) => {
     setState(s => ({
       ...s,
@@ -797,10 +664,14 @@ function App() {
     setState(s => ({ ...s, dcaSchedule: (s.dcaSchedule || []).filter(x => x.id !== id) }));
   }, []);
 
-  const applyScheduledDca = useCallback((amount) => {
+  const applyScheduledDca = useCallback((amount, id) => {
     const n = sanitizeNum(amount, 1, 1_000_000, 0);
     if (!n) return;
-    setState(s => ({ ...s, dca: n }));
+    setState(s => ({
+      ...s,
+      dca: n,
+      dcaAutoAppliedIds: id ? [...new Set([...(s.dcaAutoAppliedIds || []), id])] : s.dcaAutoAppliedIds,
+    }));
     showToast(`Monthly DCA updated to ${n}`);
   }, [showToast]);
 
@@ -815,12 +686,9 @@ function App() {
         fetchFxRates("USD"),
       ]);
       setState(s => {
-        const freshTotal = s.assets.reduce((sum, a) => sum + (a.current || 0), 0);
-        const baseline = s?.live?.baselineTotal == null ? freshTotal : s.live.baselineTotal;
         const livePatch = {
           ...(s.live || {}),
           enabled: true,
-          baselineTotal: baseline,
           quoteData: quotesData,
           fxData,
           providerHealth: quotesData.providerHealth || {},
@@ -832,15 +700,14 @@ function App() {
           assets: s.assets,
           quotesData,
           fxData,
-          currency: CURRENCY_TO_ISO[s.currency] || "USD",
-          baselineTotal: baseline,
+          currency: CURRENCY_ISO,
         });
 
         let priceSnapshots = s.priceSnapshots || [];
         const nowMs = Date.now();
         const lastSnapMs = new Date(priceSnapshots[priceSnapshots.length - 1]?.capturedAt || 0).getTime();
         if (!lastSnapMs || nowMs - lastSnapMs >= 60 * 1000) {
-          const pushed = pushLocalSnapshot(priceSnapshots, model, s.currency);
+          const pushed = pushLocalSnapshot(priceSnapshots, model, CURRENCY_SYMBOL);
           priceSnapshots = pushed.list;
           persistSnapshotRemote(pushed.snap).catch(() => null);
         }
@@ -883,7 +750,7 @@ function App() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const parsed = importBrokerCsv(String(ev.target?.result || ""), brokerSource);
+        const parsed = importBrokerCsv(String(ev.target?.result || ""));
         if (!parsed.assets.length) {
           showToast("No valid positions found in CSV", "error");
           return;
@@ -909,6 +776,7 @@ function App() {
                 current: sanitizeNum(row.current, 0, 10_000_000, 0),
                 target: sanitizeNum(row.target, 0, 100, 0),
                 icon: "barChart",
+                costBasis: sanitizeNum(row.current, 0, 10_000_000, 0),
                 ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
               });
             }
@@ -916,21 +784,21 @@ function App() {
           const logEntry = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             importedAt: new Date().toISOString(),
-            source: brokerSource,
+            source: "trade-republic",
             importedRows: parsed.importedRows,
             totalRows: parsed.totalRows,
             fileName: file.name,
           };
           return { ...s, assets: merged, brokerImportLog: [...(s.brokerImportLog || []), logEntry].slice(-40) };
         });
-        showToast(`Imported ${parsed.importedRows} positions from ${brokerSource}`);
+        showToast(`Imported ${parsed.importedRows} positions from Trade Republic CSV`);
       } catch (error) {
         showToast(`Broker CSV import failed: ${error?.message || "Unknown error"}`, "error");
       }
     };
     reader.onerror = () => showToast("Could not read CSV file", "error");
     reader.readAsText(file);
-  }, [brokerSource, showToast]);
+  }, [showToast]);
 
   const handlePdfImport = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -953,6 +821,7 @@ function App() {
               name: row.name || merged[idx].name,
               cat: CATEGORIES.includes(row.cat) ? row.cat : merged[idx].cat,
               current: row.current > 0 ? sanitizeNum(row.current, 0, 10_000_000, merged[idx].current) : merged[idx].current,
+              ...(row._isin ? { _isin: row._isin } : {}),
               ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
             };
           } else {
@@ -963,6 +832,8 @@ function App() {
               current: sanitizeNum(row.current, 0, 10_000_000, 0),
               target: 0,
               icon: OFFICIAL_TICKER_ICONS[row.ticker] || "barChart",
+              costBasis: sanitizeNum(row.current, 0, 10_000_000, 0),
+              ...(row._isin ? { _isin: row._isin } : {}),
               ...(row.holdings > 0 ? { holdings: row.holdings } : {}),
             });
           }
@@ -985,12 +856,6 @@ function App() {
       showToast(`PDF import failed: ${error?.message || "Unknown error"}`, "error");
     }
   }, [showToast]);
-
-  const testBrokerApiAdapter = useCallback(async () => {
-    const result = await fetchBrokerPositionsAdapter(brokerSource, {});
-    if (result.ok) showToast("Broker API adapter is connected");
-    else showToast(result.hint || result.error || "Broker API adapter unavailable", "info");
-  }, [brokerSource, showToast]);
 
   useEffect(() => {
     if (!state?.live?.enabled) {
@@ -1024,13 +889,25 @@ function App() {
     };
     const newAssets = state.assets.map(a => {
       const b = step.buys.find(x => x.ticker === a.ticker);
-      return b ? { ...a, current: Math.round((a.current + b.buy) * 100) / 100 } : { ...a };
+      if (!b) return { ...a };
+      // Locking in money invested always grows cost basis. If we know a live price
+      // per unit, also grow holdings so the next live refresh doesn't erase this buy
+      // by recomputing current = holdings × price from the old (pre-buy) quantity.
+      const quoteRow = liveModel?.rows?.find(r => r.ticker === a.ticker);
+      const price = a.holdings > 0 && quoteRow?.quotePrice > 0 ? quoteRow.quotePrice : null;
+      const costBasis = Math.round(((a.costBasis ?? a.current) + b.buy) * 100) / 100;
+      const current = Math.round((a.current + b.buy) * 100) / 100;
+      if (price) {
+        const holdings = Math.round((a.holdings + b.buy / price) * 1e8) / 1e8;
+        return { ...a, holdings, current, costBasis };
+      }
+      return { ...a, current, costBasis };
     });
     setState(s => ({ ...s, assets: newAssets, history: [...s.history, snap] }));
     setConfirmLock(false);
     setTab(0);
     showToast(`Month ${state.history.length + 1} locked — portfolio updated!`);
-  }, [projection, state.assets, state.history.length, total, showToast]);
+  }, [projection, state.assets, state.history.length, total, showToast, liveModel]);
 
   const hardReset = useCallback(() => {
     setState({ ...DEFAULT_STATE, assets: DEFAULT_ASSETS.map(a => ({ ...a })) });
@@ -1071,16 +948,13 @@ function App() {
         setState({
           ...DEFAULT_STATE,
           dca:              sanitizeNum(parsed.dca, 1, 1_000_000, 130),
-          currency:         CURRENCIES.includes(parsed.currency) ? parsed.currency : "€",
           theme:            ["dark","light","auto"].includes(parsed.theme) ? parsed.theme : "auto",
           projectionMonths: sanitizeNum(parsed.projectionMonths, 1, 12, 3),
           history:          Array.isArray(parsed.history) ? parsed.history.slice(-120) : [],
           schemaVersion:    SCHEMA_VERSION,
-          platform:         PLATFORMS.some(x => x.id === parsed.platform) ? parsed.platform : "trade-republic",
           live: {
             enabled: !!parsed?.live?.enabled,
             refreshSec: sanitizeNum(parsed?.live?.refreshSec, 15, 300, 60),
-            baselineTotal: parsed?.live?.baselineTotal == null ? null : sanitizeNum(parsed.live.baselineTotal, 0, 100_000_000, 0),
             lastFetchedAt: typeof parsed?.live?.lastFetchedAt === "string" ? parsed.live.lastFetchedAt : null,
             providerHealth: parsed?.live?.providerHealth && typeof parsed.live.providerHealth === "object" ? parsed.live.providerHealth : {},
             unresolved: Array.isArray(parsed?.live?.unresolved) ? parsed.live.unresolved.slice(0, 20) : [],
@@ -1095,6 +969,8 @@ function App() {
           brokerImportLog: Array.isArray(parsed?.brokerImportLog) ? parsed.brokerImportLog.slice(-40) : [],
           income: sanitizeIncome(parsed?.income),
           dcaSchedule: sanitizeDcaSchedule(parsed?.dcaSchedule),
+          dcaAutoAppliedIds: Array.isArray(parsed?.dcaAutoAppliedIds) ? parsed.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
+          lastBackupAt: new Date().toISOString(),
           assets,
         });
         showToast(`Portfolio imported — ${assets.length} assets loaded.`);
@@ -1107,11 +983,9 @@ function App() {
   }, [showToast]);
 
   const tabs = [
-    { label:"Overview",   icon:"barChart", short:"Overview" },
-    { label:"Month 1",    icon:"calendar", short:"M1"       },
-    ...projection.steps.slice(1).map((_, i) => ({ label:`Month ${i+2}`, icon:"trendUp", short:`M${i+2}` })),
-    { label:"Health",     icon:"bullseye", short:"Health"   },
-    { label:"History",    icon:"history",  short:"History"  },
+    { label:"Overview", icon:"barChart", short:"Overview" },
+    { label:"Plan",     icon:"calendar", short:"Plan"      },
+    { label:"History",  icon:"history",  short:"History"  },
   ];
 
   return (
@@ -1143,7 +1017,7 @@ function App() {
               </div>
               <h1 className="hdr-title">Portfolio Roadmap</h1>
               <div className="hdr-sub-row">
-                <span className="hdr-sub">{state.assets.length} assets · Buy-only · <PlatformBadge platformId={state.platform}/></span>
+                <span className="hdr-sub">{state.assets.length} assets · Buy-only · <PlatformBadge/></span>
                 <span className="hdr-sep">·</span>
                 <button className="dca-pill" onClick={() => setDcaPickerOpen(true)} title={savingsRatePct != null ? `${savingsRatePct.toFixed(1)}% of net income — click to edit` : "Open DCA editor"}>
                   <Icon name="zap" style={{ width:12, height:12 }}/>
@@ -1157,6 +1031,9 @@ function App() {
               <button className="icon-btn" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Open settings">
                 <Icon name="settings" style={{ width:17, height:17 }}/>
               </button>
+              <a className="icon-btn" href="/api/auth/logout" title="Sign out" aria-label="Sign out">
+                <Icon name="logout" style={{ width:17, height:17 }}/>
+              </a>
             </div>
           </div>
         </header>
@@ -1252,7 +1129,6 @@ function App() {
               setEditOpen={setEditOpen}
               onUpdateCurrent={(ticker, val) => { updateAsset(ticker, "current", val); showToast(`${ticker} updated`); }}
               assets={state.assets}
-              platformId={state.platform}
               liveEnabled={state.live.enabled}
               liveRefreshSec={state.live.refreshSec}
               liveLastFetchedAt={state.live.lastFetchedAt}
@@ -1265,33 +1141,22 @@ function App() {
               driftAlerts={driftAlerts}
             />
           )}
-          {displayedTab >= 1 && displayedTab <= projection.steps.length && (
-            <MonthTab
-              step={projection.steps[displayedTab - 1]}
-              allSteps={projection.steps}
-              stepIndex={displayedTab - 1}
-              label={`Month ${displayedTab}`}
-              isFirst={displayedTab === 1}
+          {displayedTab === 1 && (
+            <PlanTab
+              projection={projection}
               dca={state.dca}
               cy={cy}
               onConfirmLock={() => setConfirmLock(true)}
               assets={state.assets}
               total={total}
               showToast={showToast}
-            />
-          )}
-          {displayedTab === projection.steps.length + 1 && (
-            <HealthTab
-              finalPort={projection.finalPort}
-              finalTotal={projection.finalTotal}
               avgDrift={projAvgDrift}
               maxDrift={projMaxDrift}
               aligned={projAligned}
-              cy={cy}
               months={state.projectionMonths}
             />
           )}
-          {displayedTab === projection.steps.length + 2 && (
+          {displayedTab === 2 && (
             <HistoryTab history={state.history} cy={cy} priceSnapshots={state.priceSnapshots}/>
           )}
         </div>
@@ -1305,22 +1170,17 @@ function App() {
           state={state}
           onClose={() => setSettingsOpen(false)}
           onUpdateDca={updateDca}
-          onUpdateCurrency={c  => { setState(s => ({ ...s, currency: c })); showToast(`Currency set to ${c}`); }}
           onUpdateTheme={t     => setState(s => ({ ...s, theme: t }))}
           onUpdateProjection={v => setState(s => ({ ...s, projectionMonths: sanitizeNum(v, 1, 12, 3) }))}
-          onUpdatePlatform={updatePlatform}
           onUpdateAsset={updateAsset}
           onAddAsset={addAsset}
           onRemoveAsset={requestRemoveAsset}
           onNormalize={normalizeTargets}
-          onExportJSON={() => { exportJSON(state); showToast("JSON backup downloaded."); }}
+          onExportJSON={() => { exportJSON(state); setState(s => ({ ...s, lastBackupAt: new Date().toISOString() })); showToast("JSON backup downloaded."); }}
           onExportCSV={() => { exportCSV(state.assets, cy); showToast("CSV downloaded."); }}
           onImport={() => fileInputRef.current?.click()}
           onImportBrokerCsv={() => brokerFileInputRef.current?.click()}
           onImportPdf={() => pdfFileInputRef.current?.click()}
-          brokerSource={brokerSource}
-          onBrokerSourceChange={setBrokerSource}
-          onTestBrokerApi={testBrokerApiAdapter}
           onReset={() => { setSettingsOpen(false); setConfirmReset(true); }}
           targetSum={targetSum}
           targetOk={targetOk}
@@ -1339,6 +1199,7 @@ function App() {
           onAddScheduleEntry={addDcaScheduleEntry}
           onRemoveScheduleEntry={removeDcaScheduleEntry}
           onApplyScheduledDca={applyScheduledDca}
+          liveModel={liveModel}
         />
       )}
 
@@ -1404,8 +1265,6 @@ function App() {
           onOpenSettings={() => setSettingsOpen(true)}
         />
       )}
-
-      <style>{getCSS()}</style>
     </div>
   );
 }
@@ -1430,16 +1289,19 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────
-function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, platformId, liveEnabled, liveRefreshSec, liveLastFetchedAt, liveLoading, liveError, liveModel, onToggleLive, onRefreshLive, onUpdateLiveRefresh, driftAlerts }) {
+function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, liveEnabled, liveRefreshSec, liveLastFetchedAt, liveLoading, liveError, liveModel, onToggleLive, onRefreshLive, onUpdateLiveRefresh, driftAlerts }) {
   const [localVals, setLocalVals] = useState({});
 
   useEffect(() => {
+    // Intentionally keyed on editOpen only: re-initializing on every `assets` change
+    // (e.g. a live price refresh every ~60s) would wipe out values you're mid-typing.
     if (editOpen) {
       const init = {};
       assets.forEach(a => { init[a.ticker] = String(a.current); });
       setLocalVals(init);
     }
-  }, [editOpen, assets]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOpen]);
 
   const handleSaveAll = () => {
     Object.entries(localVals).forEach(([ticker, val]) => onUpdateCurrent(ticker, val));
@@ -1587,7 +1449,7 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
       </div>
 
       {/* Current Drift — per-asset detail */}
-      <Sh title="Current Drift" subtitle="Sorted from most under-weight to most over-weight"/>
+      <Sh title="Current Drift" subtitle="Sorted by value, largest first"/>
       <div className="drift-list" role="list">
         {sortedDrift.map((a, i) => {
           const c    = CAT_COLORS[a.cat] || "#6366f1";
@@ -1633,8 +1495,8 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
         <button className="editor-hdr" onClick={() => setEditOpen(v => !v)} aria-expanded={editOpen}>
           <div className="editor-hdr-l">
             <Icon name="edit" style={{ width:15, height:15, color:"var(--accent-indigo)" }}/>
-            <span className="editor-hdr-title">Update Holdings</span>
-            <span className="editor-hint">Enter your real {PLATFORMS.find(p => p.id === platformId)?.name ?? "brokerage"} values after each session</span>
+            <span className="editor-hdr-title">Update Values</span>
+            <span className="editor-hint">Enter your real {PLATFORM_NAME} values after each session</span>
           </div>
           <div className={`chevron ${editOpen ? "open" : ""}`} aria-hidden="true">▾</div>
         </button>
@@ -1679,6 +1541,50 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+// ─── PLAN TAB (month stepper + N-month outlook) ────────────────
+function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast, avgDrift, maxDrift, aligned, months }) {
+  const [monthIndex, setMonthIndex] = useState(0);
+  const lastIndex = projection.steps.length - 1;
+  const clamped = Math.min(monthIndex, Math.max(0, lastIndex));
+  const step = projection.steps[clamped];
+
+  if (!step) return null;
+
+  return (
+    <>
+      <div className="plan-stepper">
+        <button className="btn-ghost sm" onClick={() => setMonthIndex(i => Math.max(0, i - 1))} disabled={clamped === 0} aria-label="Previous month">
+          <Icon name="arrows" style={{ width:13, height:13, transform:"scaleX(-1)" }}/>
+        </button>
+        <div className="plan-stepper-label mono">Month {clamped + 1} of {projection.steps.length}</div>
+        <button className="btn-ghost sm" onClick={() => setMonthIndex(i => Math.min(lastIndex, i + 1))} disabled={clamped === lastIndex} aria-label="Next month">
+          <Icon name="arrows" style={{ width:13, height:13 }}/>
+        </button>
+      </div>
+      <MonthTab
+        step={step}
+        label={`Month ${clamped + 1}`}
+        isFirst={clamped === 0}
+        dca={dca}
+        cy={cy}
+        onConfirmLock={onConfirmLock}
+        assets={assets}
+        total={total}
+        showToast={showToast}
+      />
+      <HealthTab
+        finalPort={projection.finalPort}
+        finalTotal={projection.finalTotal}
+        avgDrift={avgDrift}
+        maxDrift={maxDrift}
+        aligned={aligned}
+        cy={cy}
+        months={months}
+      />
     </>
   );
 }
@@ -2067,15 +1973,13 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdateTheme, onUpdateProjection, onUpdatePlatform, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, brokerSource, onBrokerSourceChange, onTestBrokerApi, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
-  const [platformExpanded, setPlatformExpanded] = useState(
-    () => PLATFORMS.findIndex(p => p.id === state.platform) >= 10
-  );
   const modalRef = useRef(null);
   useEffect(() => { modalRef.current?.focus(); }, []);
+  useFocusTrap(modalRef);
 
   // Category targets: redistribute asset targets within a category proportionally
   const setCategoryTarget = (cat, newCatTarget) => {
@@ -2149,22 +2053,13 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
               <div className="settings-card">
                 <SettingRow title="Monthly DCA" desc="How much you invest each month">
                   <div className="editor-inp-wrap">
-                    <span className="editor-sym">{state.currency}</span>
+                    <span className="editor-sym">{CURRENCY_SYMBOL}</span>
                     <input className="editor-inp mono" type="number" min="1" max="1000000" step="10"
                       value={localDca}
                       onChange={e => setLocalDca(e.target.value)}
                       onBlur={() => { onUpdateDca(localDca); showToast("DCA updated"); }}
                       onKeyDown={e => { if (e.key === "Enter") { onUpdateDca(localDca); e.target.blur(); }}}
                       style={{ width:90 }} aria-label="Monthly DCA"/>
-                  </div>
-                </SettingRow>
-                <SettingDivider/>
-                <SettingRow title="Currency" desc="Symbol shown throughout the app">
-                  <div className="seg-ctrl" role="group">
-                    {CURRENCIES.map(c => (
-                      <button key={c} className={`seg-btn ${state.currency === c ? "active" : ""}`}
-                        onClick={() => onUpdateCurrency(c)}>{c}</button>
-                    ))}
                   </div>
                 </SettingRow>
               </div>
@@ -2252,37 +2147,6 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
               </div>
             </div>
 
-            {/* Platform */}
-            <div className="settings-group">
-              <div className="settings-group-label">Platform</div>
-              <div className="settings-group-desc">Your brokerage or trading app</div>
-              <div className="settings-card no-pad">
-                <div className="platform-grid-wrap">
-                  <div className="platform-grid">
-                    {(platformExpanded ? PLATFORMS : PLATFORMS.slice(0, 10)).map(p => (
-                      <button key={p.id}
-                        className={`platform-opt ${state.platform === p.id ? "active" : ""}`}
-                        style={{ "--p-color": p.color }}
-                        onClick={() => onUpdatePlatform(p.id)}
-                        title={p.name}
-                        aria-label={p.name}
-                        aria-pressed={state.platform === p.id}
-                      >
-                        <span className="platform-opt-ico" aria-hidden="true"><PlatformIcon platform={p}/></span>
-                        <span className="platform-opt-name">{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {PLATFORMS.length > 10 && (
-                    <button className="platform-expand-btn" onClick={() => setPlatformExpanded(v => !v)}>
-                      <Icon name={platformExpanded ? "warning" : "plus"} style={{ width:11, height:11 }}/>
-                      {platformExpanded ? "Show less" : `${PLATFORMS.length - 10} more platforms`}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
             {/* Danger zone */}
             <div className="settings-group">
               <div className="settings-group-label">Danger Zone</div>
@@ -2302,7 +2166,7 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
         {section === "cashflow" && (
           <CashflowSection
             state={state}
-            cy={state.currency}
+            cy={CURRENCY_SYMBOL}
             onUpdateIncome={onUpdateIncome}
             onUpdateDca={onUpdateDca}
             onAddScheduleEntry={onAddScheduleEntry}
@@ -2348,7 +2212,8 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                   {state.assets.map(a => (
                     <AssetRow key={a.ticker} asset={a}
                       color={CAT_COLORS[a.cat] || "#6366f1"}
-                      currency={state.currency}
+                      currency={CURRENCY_SYMBOL}
+                      isLive={!!liveModel?.rows?.find(r => r.ticker === a.ticker)?.holdingsComputed}
                       onUpdate={(field, val) => onUpdateAsset(a.ticker, field, val)}
                       onRemove={() => onRemoveAsset(a.ticker)}
                     />
@@ -2453,18 +2318,6 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
               <div className="settings-card">
                 <div className="data-action-row">
                   <div className="data-action-info">
-                    <div className="setting-title">Broker Source</div>
-                    <div className="setting-desc">Choose parser profile for CSV auto-mapping</div>
-                  </div>
-                  <select className="asset-select" value={brokerSource} onChange={e => onBrokerSourceChange(e.target.value)} aria-label="Broker source">
-                    <option value="trade-republic">Trade Republic</option>
-                    <option value="interactive-brokers">Interactive Brokers (IBKR)</option>
-                    <option value="generic">Generic CSV</option>
-                  </select>
-                </div>
-                <SettingDivider/>
-                <div className="data-action-row">
-                  <div className="data-action-info">
                     <div className="setting-title">Import Trade Republic PDF</div>
                     <div className="setting-desc">Import positions directly from your TR securities or crypto statement PDFs. Extracts holdings quantities automatically.</div>
                   </div>
@@ -2476,20 +2329,10 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateCurrency, onUpdate
                 <div className="data-action-row">
                   <div className="data-action-info">
                     <div className="setting-title">Import Positions CSV</div>
-                    <div className="setting-desc">Merge current values and add unknown assets from broker exports</div>
+                    <div className="setting-desc">Merge current values and add unknown assets from a Trade Republic CSV export</div>
                   </div>
                   <button className="btn-ghost" onClick={onImportBrokerCsv}>
                     <Icon name="upload" style={{ width:14, height:14 }}/>Import CSV
-                  </button>
-                </div>
-                <SettingDivider/>
-                <div className="data-action-row">
-                  <div className="data-action-info">
-                    <div className="setting-title">API Adapter Check</div>
-                    <div className="setting-desc">Scaffold for secure broker API integration via backend token exchange</div>
-                  </div>
-                  <button className="btn-ghost" onClick={onTestBrokerApi}>
-                    <Icon name="refresh" style={{ width:14, height:14 }}/>Test Adapter
                   </button>
                 </div>
               </div>
@@ -2669,7 +2512,7 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateDca, onAddSchedule
                   </div>
                   <div className="schedule-row-actions">
                     {!isPast && (
-                      <button className="btn-ghost xs" onClick={() => onApplyScheduledDca(item.amount)} title="Apply now">
+                      <button className="btn-ghost xs" onClick={() => onApplyScheduledDca(item.amount, item.id)} title="Apply now">
                         Apply now
                       </button>
                     )}
@@ -2725,12 +2568,11 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateDca, onAddSchedule
 }
 
 // ─── ASSET ROW (controlled) ───────────────────────────────────
-function AssetRow({ asset, color, currency, onUpdate, onRemove }) {
+function AssetRow({ asset, color, currency, isLive, onUpdate, onRemove }) {
   const [v, setV] = useState({ ticker: asset.ticker, name: asset.name, current: String(asset.current), target: String(asset.target), holdings: asset.holdings != null ? String(asset.holdings) : "" });
   // Sync current value when parent updates it (e.g. from live price refresh)
   useEffect(() => { setV(x => ({ ...x, current: String(asset.current) })); }, [asset.current]);
   const flush = (field) => onUpdate(field, v[field]);
-  const hasHoldings = v.holdings !== "" && Number(v.holdings) > 0;
   return (
     <div className="assets-trow" role="row">
       <div className="asset-name-cell">
@@ -2760,14 +2602,14 @@ function AssetRow({ asset, color, currency, onUpdate, onRemove }) {
           style={{ width:68 }} aria-label="Holdings quantity"/>
       </div>
       <div className="editor-inp-wrap sm">
+        {isLive && <span className="live-badge-dot" title="Auto-updated from live price \u00d7 holdings" aria-hidden="true"/>}
         <span className="editor-sym">{currency}</span>
         <input className="editor-inp mono" type="number" min="0" max="10000000" step="0.01"
           value={v.current}
           onChange={e => setV(x => ({ ...x, current: e.target.value }))}
           onBlur={() => flush("current")}
-          disabled={hasHoldings}
-          title={hasHoldings ? "Auto-calculated from holdings \u00d7 live price" : "Manual value"}
-          style={{ width:72, opacity: hasHoldings ? 0.6 : 1 }} aria-label="Current value"/>
+          title={isLive ? "Auto-updated from holdings \u00d7 live price \u2014 edit to override" : "Manual value"}
+          style={{ width:72 }} aria-label="Current value"/>
       </div>
       <div className="editor-inp-wrap sm">
         <input className="editor-inp mono" type="number" min="0" max="100" step="0.01"
@@ -2787,9 +2629,12 @@ function AssetRow({ asset, color, currency, onUpdate, onRemove }) {
 // ─── CONFIRM MODAL ────────────────────────────────────────────
 function ConfirmModal({ icon, iconColor, title, body, confirmLabel, danger, onCancel, onConfirm, hasNote }) {
   const [note, setNote] = useState("");
+  const modalRef = useRef(null);
+  useEffect(() => { modalRef.current?.focus(); }, []);
+  useFocusTrap(modalRef);
   return (
     <div className="overlay" onClick={onCancel} role="dialog" aria-modal="true">
-      <div className="modal sm-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal sm-modal" ref={modalRef} tabIndex={-1} onClick={e => e.stopPropagation()}>
         <div className="modal-icon-wrap" style={{ background: danger ? "rgba(239,68,68,.1)" : "rgba(16,185,129,.1)" }}>
           <Icon name={icon} style={{ width:24, height:24, color:iconColor }}/>
         </div>
@@ -2823,6 +2668,8 @@ function DcaPickerModal({ cy, currentValue, income, onClose, onSave }) {
   const presetValues = incomeNet > 0
     ? [0.05, 0.10, 0.15, 0.20, 0.25, 0.30].map(r => Math.round(incomeNet * r))
     : defaultPresets;
+  const modalRef = useRef(null);
+  useFocusTrap(modalRef);
 
   useEffect(() => { setDraft(String(currentValue)); }, [currentValue]);
 
@@ -2831,7 +2678,7 @@ function DcaPickerModal({ cy, currentValue, income, onClose, onSave }) {
 
   return (
     <div className="overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="DCA amount editor">
-      <div className="modal sm-modal dca-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal sm-modal dca-modal" ref={modalRef} onClick={e => e.stopPropagation()}>
         <div className="modal-icon-wrap" style={{ background:"rgba(99,102,241,.12)" }}>
           <Icon name="zap" style={{ width:24, height:24, color:"var(--accent-indigo)" }}/>
         </div>
@@ -3029,744 +2876,3 @@ function CommandPalette({ tabs, onClose, onTabSelect, onToggleTheme, onOpenSetti
   );
 }
 
-// ─── CSS ──────────────────────────────────────────────────────
-function getCSS() { return `
-/* ── THEME TOKENS ── */
-.pr.dark, :root {
-  --bg:            #0a0f1a;
-  --bg2:           #101829;
-  --bg3:           #0d1520;
-  --surface:       rgba(255,255,255,.03);
-  --surface2:      rgba(255,255,255,.06);
-  --surface3:      rgba(255,255,255,.09);
-  --border:        rgba(255,255,255,.07);
-  --border2:       rgba(255,255,255,.13);
-  --text:          #e2e8f0;
-  --text2:         #94a3b8;
-  --text3:         #64748b;
-  --text4:         #475569;
-  --accent-indigo: #a5b4fc;
-  --accent-green:  #10b981;
-  --accent-amber:  #f59e0b;
-  --accent-red:    #ef4444;
-  --accent-blue:   #60a5fa;
-  --glow1:         rgba(99,102,241,.07);
-  --glow2:         rgba(16,185,129,.05);
-  --input-bg:      rgba(255,255,255,.06);
-  --kpi-active:    rgba(99,102,241,.14);
-}
-.pr.light {
-  --bg:            #f8fafc;
-  --bg2:           #f1f5f9;
-  --bg3:           #e8eef5;
-  --surface:       rgba(0,0,0,.02);
-  --surface2:      rgba(0,0,0,.04);
-  --surface3:      rgba(0,0,0,.07);
-  --border:        rgba(0,0,0,.09);
-  --border2:       rgba(0,0,0,.16);
-  --text:          #0f172a;
-  --text2:         #334155;
-  --text3:         #64748b;
-  --text4:         #94a3b8;
-  --accent-indigo: #4f46e5;
-  --accent-green:  #059669;
-  --accent-amber:  #d97706;
-  --accent-red:    #dc2626;
-  --accent-blue:   #2563eb;
-  --glow1:         rgba(99,102,241,.04);
-  --glow2:         rgba(16,185,129,.03);
-  --input-bg:      rgba(0,0,0,.04);
-  --kpi-active:    rgba(79,70,229,.09);
-}
-
-/* ── BASE ── */
-*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-.pr { min-height:100vh; background:linear-gradient(165deg,var(--bg) 0%,var(--bg2) 40%,var(--bg3) 100%); font-family:'DM Sans',-apple-system,sans-serif; color:var(--text); overflow-x:hidden; -webkit-font-smoothing:antialiased; transition:background .35s,color .35s; font-size:15px; }
-.pr.theme-transitioning,.pr.theme-transitioning * { transition:background-color 0.35s ease,background 0.35s ease,color 0.35s ease,border-color 0.35s ease,fill 0.35s ease,stroke 0.35s ease !important; }
-.mono { font-family:'JetBrains Mono',monospace; }
-.pr-glow { position:fixed; border-radius:50%; pointer-events:none; z-index:0; }
-.g1 { top:-200px; right:-200px; width:500px; height:500px; background:radial-gradient(circle,var(--glow1) 0%,transparent 70%); }
-.g2 { bottom:-250px; left:-100px; width:450px; height:450px; background:radial-gradient(circle,var(--glow2) 0%,transparent 70%); }
-.wrap { max-width:1100px; margin:0 auto; padding:40px 28px 80px; position:relative; z-index:1; }
-
-/* ── ICONS ── */
-.svg-icon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1; }
-.svg-icon svg { width:100%; height:100%; display:block; }
-.svg-icon img { width:100%; height:100%; display:block; object-fit:contain; transform:scale(1.08); filter:saturate(1.2) contrast(1.08); }
-.d-icon .svg-icon { width:20px; height:20px; }
-.d-icon.sm .svg-icon { width:18px; height:18px; }
-.buy-ico .svg-icon { width:22px; height:22px; }
-.h-ico .svg-icon { width:21px; height:21px; }
-.tab-ico { width:13px; height:13px; opacity:.8; }
-.safety-ico { width:22px; height:22px; flex-shrink:0; }
-.badge .svg-icon { width:10px; height:10px; }
-
-/* ── TOAST ── */
-.toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:var(--bg2); border:1px solid var(--border2); border-radius:12px; padding:12px 20px; font-size:14px; font-weight:500; display:flex; align-items:center; gap:9px; z-index:9999; box-shadow:0 8px 32px rgba(0,0,0,.25); animation:toastIn .3s ease; white-space:nowrap; color:var(--text); }
-.toast-success { border-color:rgba(16,185,129,.35); color:var(--accent-green); }
-.toast-info    { border-color:rgba(99,102,241,.35); color:var(--accent-indigo); }
-.toast-error   { border-color:rgba(239,68,68,.35);  color:var(--accent-red); }
-@keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(14px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
-.toast-undo-btn { background:transparent; border:1px solid var(--accent-indigo); color:var(--accent-indigo); border-radius:6px; padding:3px 10px; font-size:12px; font-weight:600; cursor:pointer; margin-left:6px; white-space:nowrap; transition:background .15s,color .15s; }
-.toast-undo-btn:hover { background:var(--accent-indigo); color:#fff; }
-
-/* ── HEADER ── */
-.hdr { margin-bottom:24px; opacity:0; transform:translateY(-16px); transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1); }
-.hdr.in { opacity:1; transform:translateY(0); }
-.hdr-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-.hdr-left { flex:1; min-width:0; }
-.hdr-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.dot { width:9px; height:9px; border-radius:50%; background:var(--accent-green); box-shadow:0 0 12px rgba(16,185,129,.65); animation:pulse 2s ease-in-out infinite; flex-shrink:0; }
-.hdr-tag { font-size:11px; font-weight:700; letter-spacing:2.8px; text-transform:uppercase; color:var(--accent-green); }
-.hdr-title { font-size:34px; font-weight:700; letter-spacing:-.6px; line-height:1.1; margin:0 0 8px; background:linear-gradient(135deg,var(--text),var(--text2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; color:var(--text); }
-.hdr-sub-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.hdr-sub { color:var(--text3); font-size:14px; }
-.hdr-sep { color:var(--text4); font-size:14px; }
-.hdr-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-top:4px; }
-
-/* ── DCA EDITOR ── */
-.dca-pill { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; background:rgba(99,102,241,.1); border:1px solid rgba(99,102,241,.2); border-radius:20px; cursor:pointer; font-size:14px; font-weight:600; color:var(--accent-indigo); transition:all .2s; }
-.dca-pill:hover { background:rgba(99,102,241,.18); border-color:rgba(99,102,241,.35); }
-.dca-modal { max-width:460px; text-align:center; }
-.dca-preset-grid { margin-top:14px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
-.dca-preset-btn { border:1px solid var(--border2); background:var(--surface); color:var(--text2); border-radius:9px; padding:8px 10px; cursor:pointer; font-size:12px; font-weight:600; transition:all .18s; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; min-height:42px; }
-.dca-preset-btn:hover { border-color:rgba(99,102,241,.38); color:var(--accent-indigo); background:rgba(99,102,241,.08); }
-.dca-preset-btn.active { border-color:rgba(99,102,241,.45); color:var(--accent-indigo); background:rgba(99,102,241,.12); }
-
-/* ── DCA SCHEDULE ── */
-.schedule-add-grid { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px; }
-.schedule-list { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
-.schedule-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid var(--border2); border-radius:10px; background:var(--surface); transition:border-color .18s, background .18s; }
-.schedule-row:hover { border-color:rgba(99,102,241,.3); }
-.schedule-row.past { opacity:0.55; }
-.schedule-row-main { display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:0; }
-.schedule-row-date { font-size:12px; font-weight:600; color:var(--text2); background:var(--bg2); padding:2px 8px; border-radius:6px; }
-.schedule-row-amount { font-size:13px; font-weight:700; color:var(--accent-indigo); }
-.schedule-row-note { font-size:12px; color:var(--text3); }
-.schedule-row-tag { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--accent-green); background:rgba(16,185,129,0.1); padding:2px 7px; border-radius:5px; }
-.schedule-row-actions { display:flex; gap:4px; align-items:center; flex-shrink:0; }
-.btn-ghost.xs { padding:4px 10px; font-size:11px; font-weight:600; }
-.schedule-empty { display:flex; align-items:center; gap:10px; padding:18px; color:var(--text3); font-size:13px; border:1px dashed var(--border2); border-radius:10px; margin-top:10px; }
-.outlook-mini-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-top:12px; }
-.outlook-mini-cell { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 4px; border:1px solid var(--border2); background:var(--surface); border-radius:8px; transition:border-color .15s, background .15s; }
-.outlook-mini-cell:hover { border-color:rgba(99,102,241,.32); background:rgba(99,102,241,.05); }
-.outlook-mini-ym { font-size:10px; color:var(--text3); font-weight:500; }
-.outlook-mini-amt { font-size:13px; font-weight:700; color:var(--accent-indigo); margin-top:2px; }
-@media (max-width: 580px) {
-  .outlook-mini-grid { grid-template-columns:repeat(3,1fr); }
-}
-@media (max-width: 580px) {
-  .schedule-add-grid { flex-direction:column; align-items:stretch; }
-  .schedule-add-grid > * { width:100% !important; }
-  .schedule-row { flex-direction:column; align-items:flex-start; gap:8px; }
-  .schedule-row-actions { width:100%; justify-content:flex-end; }
-}
-.dca-modal-input-wrap { margin:14px auto 0; width:fit-content; }
-
-/* ── THEME BTN ── */
-.theme-btn { display:flex; align-items:center; gap:5px; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; cursor:pointer; color:var(--text3); font-size:12px; font-weight:600; font-family:inherit; transition:all .2s; }
-.theme-btn:hover { background:var(--surface2); color:var(--text); }
-.theme-label { display:none; }
-@media(min-width:520px){ .theme-label { display:inline; } }
-
-/* ── ICON BTN ── */
-.icon-btn { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:9px; cursor:pointer; color:var(--text2); display:flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; }
-.icon-btn:hover { background:var(--surface2); color:var(--text); }
-.icon-btn.danger-hover:hover { background:rgba(239,68,68,.1); color:var(--accent-red); border-color:rgba(239,68,68,.25); }
-
-/* ── KPI ── */
-.kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; opacity:0; transform:translateY(14px); transition:opacity .7s cubic-bezier(.16,1,.3,1) .1s,transform .7s cubic-bezier(.16,1,.3,1) .1s; }
-.kpi-grid.in { opacity:1; transform:translateY(0); }
-.kpi { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 16px 14px; transition:all .25s; display:flex; flex-direction:column; }
-.kpi:hover { background:var(--surface2); border-color:var(--border2); transform:translateY(-1px); }
-.kpi-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:8px; }
-.kpi-l { font-size:11px; color:var(--text3); font-weight:600; letter-spacing:.8px; text-transform:uppercase; line-height:1.3; }
-.kpi-v { font-size:22px; font-weight:700; letter-spacing:-.5px; line-height:1; }
-.kpi-s { font-size:12px; color:var(--text4); margin-top:5px; line-height:1.4; }
-.kpi svg[aria-hidden] { margin-top:auto; padding-top:8px; }
-
-/* ── BANNER ── */
-.banner { display:flex; align-items:flex-start; gap:9px; padding:12px 16px; border-radius:11px; font-size:13px; margin-bottom:16px; line-height:1.55; }
-.banner-warn { background:rgba(245,158,11,.06); border:1px solid rgba(245,158,11,.22); color:var(--accent-amber); }
-.banner-warn strong { color:var(--accent-amber); }
-.banner-info { background:rgba(99,102,241,.06); border:1px solid rgba(99,102,241,.22); color:var(--accent-indigo); }
-.banner-info strong { color:var(--accent-indigo); }
-.banner strong { color:inherit; }
-
-/* ── TABS ── */
-.tabs { display:flex; gap:3px; margin-bottom:20px; padding:4px; background:var(--surface); border-radius:14px; border:1px solid var(--border); overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
-.tabs::-webkit-scrollbar { display:none; }
-.tab { flex:0 0 auto; display:flex; align-items:center; justify-content:center; gap:6px; padding:10px 14px; border:none; border-radius:10px; cursor:pointer; font-size:13px; font-weight:400; font-family:inherit; background:transparent; color:var(--text3); transition:all .25s; border-bottom:2px solid transparent; white-space:nowrap; }
-.tab.active { background:var(--kpi-active); color:var(--accent-indigo); font-weight:600; border-bottom-color:var(--accent-indigo); }
-.tab:hover:not(.active) { color:var(--text2); background:var(--surface2); }
-.tab-short { display:none; }
-
-/* ── CONTENT ── */
-.content { animation:fadeSlideIn .4s ease; }
-.sh { margin-top:24px; margin-bottom:14px; }
-.sh:first-child { margin-top:4px; }
-.sh h2 { font-size:17px; font-weight:700; color:var(--text); letter-spacing:-.3px; }
-.sh p { font-size:13px; color:var(--text3); margin-top:3px; line-height:1.5; }
-.badge { font-size:11px; font-weight:600; padding:3px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; }
-
-/* ── DRIFT ── */
-.drift-list { display:flex; flex-direction:column; gap:6px; }
-.d-row { display:grid; grid-template-columns:minmax(110px,1.4fr) minmax(56px,auto) 1fr auto minmax(100px,auto); align-items:center; gap:8px 12px; padding:11px 14px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:all .25s; animation:slideIn .4s ease both; }
-.d-row:hover { background:var(--surface2); border-color:var(--border2); }
-.d-left { display:flex; align-items:center; gap:9px; min-width:0; }
-.d-icon { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.d-icon.sm { width:24px; height:24px; border-radius:6px; }
-.d-info { min-width:0; }
-.d-ticker { font-size:13px; font-weight:700; color:var(--text); letter-spacing:.2px; }
-.d-cat { font-size:11px; color:var(--text4); margin-top:1px; }
-.d-val { font-size:13px; color:var(--text2); text-align:right; }
-.d-bar-area { position:relative; height:20px; display:flex; align-items:center; }
-.d-bar-mid { position:absolute; left:50%; top:3px; bottom:3px; width:1px; background:var(--border2); }
-.d-bar { position:absolute; height:12px; border-radius:4px; opacity:.85; animation:growBar .7s ease both; }
-.d-bar-neg { background:linear-gradient(90deg,#3b82f6,#60a5fa); }
-.d-bar-pos { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
-.d-pct { font-size:13px; font-weight:700; text-align:right; }
-.d-status { display:flex; align-items:center; gap:5px; justify-content:flex-end; min-width:0; }
-.d-pip { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.d-range { font-size:11px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
-.d-mob-drift { display:none; }
-
-/* ── CATEGORY ── */
-.cat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
-.cat-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:17px; position:relative; overflow:hidden; transition:all .25s; }
-.cat-card:hover { background:var(--surface2); border-color:var(--border2); }
-.cat-orb { position:absolute; top:-22px; right:-22px; width:80px; height:80px; border-radius:50%; opacity:.06; }
-.cat-header { display:flex; align-items:center; gap:7px; margin-bottom:9px; }
-.cat-l { font-size:11px; color:var(--text3); font-weight:700; letter-spacing:1px; text-transform:uppercase; }
-.cat-v { font-size:24px; font-weight:700; line-height:1; }
-.cat-t { font-size:12px; color:var(--text4); margin-top:3px; }
-.cat-bar { margin-top:12px; height:5px; border-radius:3px; background:var(--surface2); overflow:hidden; }
-.cat-bar-f { height:100%; border-radius:3px; transition:width 1s ease; }
-
-/* ── SAFETY ── */
-.safety { margin-top:22px; padding:15px 18px; border-radius:14px; background:rgba(16,185,129,.06); border:1px solid rgba(16,185,129,.18); display:flex; align-items:flex-start; gap:12px; }
-.safety-warn { background:rgba(239,68,68,.06); border-color:rgba(239,68,68,.2); }
-.safety-t { font-size:14px; font-weight:700; color:var(--accent-green); }
-.safety-d { font-size:13px; color:var(--text3); margin-top:3px; line-height:1.55; }
-
-/* ── MONTH ── */
-.month-header-row { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.month-actions { display:flex; gap:8px; flex-shrink:0; margin-top:26px; }
-.buy-list { display:flex; flex-direction:column; gap:8px; }
-.buy-card { display:flex; align-items:center; justify-content:space-between; padding:15px 18px; border-radius:14px; background:var(--surface); border:1px solid var(--border); transition:all .25s; gap:14px; }
-.buy-card:hover { background:var(--surface2); border-color:var(--border2); }
-.buy-l { display:flex; align-items:center; gap:14px; min-width:0; flex:1; }
-.buy-ico { width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.buy-info { min-width:0; flex:1; }
-.buy-name-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.buy-name { font-size:15px; font-weight:700; color:var(--text); }
-.buy-meta { display:flex; align-items:center; gap:5px; margin-top:4px; flex-wrap:wrap; }
-.buy-reason { font-size:12px; color:var(--text3); }
-.buy-reason-sep { font-size:12px; color:var(--text4); }
-.buy-r { text-align:right; flex-shrink:0; }
-.buy-amt { font-size:22px; font-weight:700; color:var(--text); line-height:1; }
-.buy-pct { font-size:12px; color:var(--text3); margin-top:3px; }
-.buy-mini { margin-top:6px; width:68px; height:4px; border-radius:2px; background:var(--surface2); margin-left:auto; }
-.buy-mini-f { height:100%; border-radius:2px; animation:growBar .8s ease both; }
-.total-bar { margin-top:12px; padding:13px 18px; border-radius:12px; background:linear-gradient(135deg,rgba(99,102,241,.07),rgba(16,185,129,.05)); border:1px solid rgba(99,102,241,.14); display:flex; justify-content:space-between; align-items:center; }
-.total-l { font-size:14px; font-weight:600; color:var(--accent-indigo); display:flex; align-items:center; }
-.total-v { font-size:18px; font-weight:700; color:var(--text); }
-
-/* ── WHAT-IF PANEL ── */
-.whatif-panel { margin:10px 0 16px; padding:14px 18px; border-radius:12px; background:rgba(245,158,11,.05); border:1px solid rgba(245,158,11,.18); }
-.whatif-label { display:flex; align-items:center; gap:7px; font-size:14px; color:var(--text2); margin-bottom:10px; }
-.whatif-slider { width:100%; accent-color:var(--accent-amber); cursor:pointer; }
-.whatif-range { display:flex; justify-content:space-between; font-size:12px; color:var(--text4); margin-top:5px; }
-
-/* ── AFTER-BUY ── */
-.after-grid { display:flex; flex-direction:column; gap:6px; }
-.after-row { display:flex; align-items:center; gap:11px; padding:9px 14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); transition:border-color .2s; }
-.after-row-bought { border-color:rgba(16,185,129,.22); background:rgba(16,185,129,.03); }
-.after-info { flex:1; display:flex; align-items:center; gap:8px; }
-.after-ticker { font-size:13px; font-weight:700; color:var(--text); }
-.after-badge { font-size:11px; font-weight:700; color:var(--accent-green); background:rgba(16,185,129,.14); padding:2px 7px; border-radius:5px; }
-.after-right { display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex-shrink:0; }
-.after-val { font-size:13px; font-weight:600; color:var(--text); }
-.after-pct { font-size:12px; font-weight:700; }
-
-/* ── LOCK MONTH ── */
-.close-month-section { margin-top:28px; padding:18px 20px; border-radius:16px; background:rgba(16,185,129,.05); border:1px solid rgba(16,185,129,.22); display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-.close-month-info { display:flex; align-items:flex-start; gap:11px; }
-.close-month-title { font-size:15px; font-weight:700; color:var(--accent-green); }
-.close-month-sub { font-size:13px; color:var(--text3); margin-top:4px; line-height:1.5; }
-
-/* ── BUTTONS ── */
-.btn-primary { display:inline-flex; align-items:center; gap:7px; padding:11px 20px; background:linear-gradient(135deg,#6366f1,#4f46e5); border:none; border-radius:11px; color:#fff; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer; transition:all .2s; white-space:nowrap; }
-.btn-primary:hover { transform:translateY(-1px); box-shadow:0 5px 18px rgba(99,102,241,.4); }
-.btn-primary.sm { padding:8px 14px; font-size:13px; }
-.btn-ghost { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; background:var(--surface); border:1px solid var(--border2); border-radius:10px; color:var(--text2); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; transition:all .2s; white-space:nowrap; }
-.btn-ghost:hover { background:var(--surface2); color:var(--text); }
-.btn-ghost.sm { padding:7px 12px; font-size:12px; }
-.btn-ghost.add-btn { margin-top:14px; color:var(--accent-indigo); border-color:rgba(99,102,241,.3); }
-.btn-ghost.add-btn:hover { background:rgba(99,102,241,.08); }
-.btn-danger { display:inline-flex; align-items:center; gap:7px; padding:9px 16px; background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.28); border-radius:10px; color:var(--accent-red); font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; transition:all .2s; }
-.btn-danger:hover { background:rgba(239,68,68,.2); }
-.btn-danger.sm { padding:7px 12px; font-size:12px; }
-
-/* ── EDITOR PANEL ── */
-.editor-panel { margin-top:32px; border-radius:16px; background:rgba(99,102,241,.04); border:1px solid rgba(99,102,241,.14); overflow:hidden; }
-.editor-hdr { width:100%; display:flex; align-items:center; justify-content:space-between; padding:16px 18px; cursor:pointer; background:transparent; border:none; font-family:inherit; color:inherit; transition:background .2s; text-align:left; }
-.editor-hdr:hover { background:rgba(99,102,241,.06); }
-.editor-hdr-l { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
-.editor-hdr-title { font-size:14px; font-weight:700; color:var(--accent-indigo); }
-.editor-hint { font-size:12px; color:var(--text4); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.chevron { font-size:18px; color:var(--accent-indigo); transition:transform .25s; flex-shrink:0; }
-.chevron.open { transform:rotate(180deg); }
-.editor-body { padding:18px; border-top:1px solid rgba(99,102,241,.12); }
-.editor-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
-.editor-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); transition:border-color .2s; }
-.editor-row:focus-within { border-color:rgba(99,102,241,.35); }
-.editor-asset { display:flex; align-items:center; gap:9px; }
-.editor-ticker { font-size:13px; font-weight:700; color:var(--text); }
-.editor-cat { font-size:11px; color:var(--text4); margin-top:1px; }
-.editor-inp-wrap { display:flex; align-items:center; background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; overflow:hidden; transition:border-color .2s; }
-.editor-inp-wrap:focus-within { border-color:rgba(99,102,241,.5); }
-.editor-sym { padding:0 7px; font-size:13px; color:var(--text3); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
-.editor-inp { background:transparent; border:none; outline:none; padding:8px 8px 8px 2px; font-size:14px; color:var(--text); width:90px; }
-.editor-inp::-webkit-inner-spin-button,.editor-inp::-webkit-outer-spin-button { opacity:.4; }
-.editor-footer { display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
-.editor-total { display:flex; align-items:center; gap:7px; font-size:14px; color:var(--text3); }
-.editor-total strong { color:var(--text); }
-
-/* ── EMPTY STATE ── */
-.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:56px 24px; text-align:center; color:var(--text2); font-size:15px; line-height:1.7; }
-
-/* ── HEALTH ── */
-.h-kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:28px; }
-.h-kpi { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:22px 16px; text-align:center; display:flex; flex-direction:column; align-items:center; transition:all .25s; }
-.h-kpi:hover { background:var(--surface2); }
-.h-kpi-l { font-size:11px; color:var(--text3); font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-bottom:7px; }
-.h-kpi-v { font-size:30px; font-weight:700; line-height:1; }
-.h-kpi-d { font-size:12px; color:var(--text4); margin-top:5px; }
-.h-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; }
-.h-card { padding:13px 16px; border-radius:13px; background:var(--surface); border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; transition:all .25s; gap:9px; }
-.h-card:hover { background:var(--surface2); }
-.h-left { display:flex; align-items:center; gap:11px; min-width:0; }
-.h-ico { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.h-info { min-width:0; }
-.h-name { font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.h-meta { font-size:12px; color:var(--text3); margin-top:2px; }
-.h-right { text-align:right; flex-shrink:0; }
-.h-drift { font-size:13px; font-weight:700; margin-top:4px; }
-.note { margin-top:22px; padding:15px 18px; border-radius:13px; background:rgba(99,102,241,.05); border:1px solid rgba(99,102,241,.14); font-size:13px; color:var(--text2); line-height:1.75; display:flex; align-items:flex-start; gap:9px; }
-.note strong { color:var(--accent-indigo); }
-
-/* ── HISTORY ── */
-.sparkline-card { margin-bottom:20px; padding:16px 20px; background:var(--surface); border:1px solid var(--border); border-radius:14px; }
-.spark-label { font-size:12px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.8px; margin-bottom:10px; }
-.sparkline { width:100%; height:60px; display:block; }
-.spark-range { display:flex; justify-content:space-between; font-size:12px; color:var(--text4); margin-top:6px; }
-.hist-list { display:flex; flex-direction:column; gap:14px; }
-.hist-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 20px; transition:border-color .2s; }
-.hist-card:hover { border-color:var(--border2); }
-.hist-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
-.hist-label { font-size:15px; font-weight:700; color:var(--text); }
-.hist-meta { display:flex; align-items:center; gap:12px; }
-.hist-gain { font-size:14px; font-weight:700; }
-.hist-date { font-size:12px; color:var(--text4); }
-.hist-total { font-size:26px; font-weight:700; color:var(--accent-green); margin-bottom:5px; line-height:1; }
-.hist-note { font-size:12px; color:var(--text3); display:flex; align-items:center; gap:6px; margin-bottom:12px; line-height:1.5; }
-.hist-assets { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:7px; margin-top:12px; }
-.hist-asset { display:flex; align-items:center; gap:7px; padding:6px 9px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); }
-.hist-asset-bought { border-color:rgba(16,185,129,.22); background:rgba(16,185,129,.04); }
-.hist-ticker { font-size:12px; font-weight:700; color:var(--text2); flex:1; }
-.hist-val { font-size:12px; color:var(--text); }
-
-/* ── LIVE TRACKING / ALERTS ── */
-.live-panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px; margin-bottom:16px; display:flex; flex-direction:column; gap:10px; }
-.live-top-row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.live-toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--text2); }
-.live-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.live-label { font-size:12px; color:var(--text3); }
-.live-refresh-inp { width:58px; border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text); padding:5px 8px; }
-.live-error { font-size:12px; color:var(--accent-red); background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.25); border-radius:9px; padding:7px 9px; }
-.live-meta { font-size:11px; color:var(--text4); }
-.live-last-updated { font-size:11px; color:var(--text4); margin-top:4px; letter-spacing:.01em; }
-.live-kpis { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
-.live-kpi { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px; display:flex; flex-direction:column; gap:4px; }
-.live-kpi span { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.7px; }
-.live-kpi strong { font-size:14px; color:var(--text); line-height:1.35; }
-.live-contrib-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
-.live-contrib-row { background:var(--surface2); border:1px solid var(--border); border-radius:9px; padding:7px 9px; display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--text2); }
-.smart-alerts { margin-bottom:18px; background:rgba(245,158,11,.07); border:1px solid rgba(245,158,11,.26); border-radius:12px; padding:12px; }
-.smart-alert-title { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; }
-.smart-alert-list { display:flex; flex-direction:column; gap:6px; }
-.smart-alert-row { display:grid; grid-template-columns:64px 1fr auto; gap:8px; align-items:center; font-size:12px; color:var(--text2); background:rgba(255,255,255,.02); border:1px solid var(--border); border-radius:8px; padding:6px 8px; }
-@media (max-width:760px) {
-  .live-kpis { grid-template-columns:1fr; }
-  .live-contrib-list { grid-template-columns:1fr; }
-  .smart-alert-row { grid-template-columns:60px 1fr; }
-  .smart-alert-row span:last-child { grid-column:1/-1; }
-}
-
-/* ── BROKER IMPORT LOG ── */
-.broker-log-list { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
-.broker-log-row { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); font-size:12px; color:var(--text3); }
-
-/* ══════════════════════════════════════════════
-   MODAL SHELL
-══════════════════════════════════════════════ */
-.overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:1000; display:flex; align-items:center; justify-content:center; padding:16px; animation:fadeIn .18s ease; }
-.modal { background:var(--bg2); border:1px solid var(--border2); border-radius:22px; box-shadow:0 32px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04); overflow:hidden; animation:modalIn .22s cubic-bezier(.16,1,.3,1); width:100%; outline:none; }
-.lg-modal { max-width:680px; max-height:88vh; display:flex; flex-direction:column; }
-.sm-modal { max-width:400px; padding:32px 28px; text-align:center; }
-.sm-modal h3 { font-size:19px; font-weight:700; color:var(--text); margin:14px 0 8px; }
-.sm-modal p { font-size:14px; color:var(--text3); line-height:1.65; }
-.modal-icon-wrap { width:52px; height:52px; border-radius:16px; display:flex; align-items:center; justify-content:center; margin:0 auto; }
-.modal-btns { display:flex; gap:10px; justify-content:center; margin-top:22px; }
-
-/* ── Modal header ── */
-.modal-hdr { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 16px; border-bottom:1px solid var(--border); flex-shrink:0; gap:12px; }
-.modal-hdr-left { display:flex; align-items:center; gap:12px; }
-.modal-hdr-icon { width:36px; height:36px; border-radius:10px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.2); display:flex; align-items:center; justify-content:center; color:var(--accent-indigo); flex-shrink:0; }
-.modal-hdr-title { font-size:16px; font-weight:700; color:var(--text); line-height:1.2; }
-.modal-hdr-sub { font-size:12px; color:var(--text3); margin-top:1px; }
-
-/* ── Tab bar ── */
-.modal-tabs { display:flex; gap:1px; padding:0 20px; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg2); }
-.modal-tab { display:flex; align-items:center; gap:6px; padding:11px 16px; border:none; background:transparent; color:var(--text3); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .18s,border-color .18s; white-space:nowrap; }
-.modal-tab:hover:not(.active) { color:var(--text2); }
-.modal-tab.active { color:var(--accent-indigo); border-bottom-color:var(--accent-indigo); font-weight:600; }
-
-/* ── Scrollable body ── */
-.modal-body { padding:20px; overflow-y:auto; flex:1; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; display:flex; flex-direction:column; gap:0; animation:modalBodyIn .22s ease; }
-@keyframes modalBodyIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-.modal-body::-webkit-scrollbar { width:5px; }
-.modal-body::-webkit-scrollbar-track { background:transparent; }
-.modal-body::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
-
-/* ══════════════════════════════════════════════
-   SETTINGS GROUPS & CARDS
-══════════════════════════════════════════════ */
-.settings-group { margin-bottom:20px; }
-.settings-group:last-child { margin-bottom:0; }
-.settings-group-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; color:var(--text3); margin-bottom:6px; padding:0 2px; }
-.settings-group-desc { font-size:12px; color:var(--text4); margin-bottom:8px; padding:0 2px; }
-.settings-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-.settings-card.no-pad { }
-
-/* ── Setting row ── */
-.setting-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 16px; }
-.setting-row + .setting-row { border-top:1px solid var(--border); }
-.setting-label { flex:1; min-width:0; }
-.setting-ctrl { flex-shrink:0; }
-.setting-title { font-size:14px; font-weight:600; color:var(--text); }
-.setting-desc { font-size:12px; color:var(--text3); margin-top:2px; line-height:1.45; }
-.setting-divider { height:1px; background:var(--border); }
-
-/* ── Segmented control ── */
-.seg-ctrl { display:flex; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:3px; gap:2px; }
-.seg-btn { display:flex; align-items:center; gap:5px; padding:6px 12px; border:none; border-radius:7px; background:transparent; color:var(--text3); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; transition:all .18s; white-space:nowrap; }
-.seg-btn.active { background:var(--bg2); color:var(--text); box-shadow:0 1px 6px rgba(0,0,0,.2); font-weight:600; }
-.seg-btn:hover:not(.active) { color:var(--text2); background:rgba(255,255,255,.04); }
-
-/* ── Target sum pill (assets toolbar) ── */
-.target-sum-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:20px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; }
-.target-sum-pill.ok { background:rgba(16,185,129,.1); color:var(--accent-green); border:1px solid rgba(16,185,129,.25); }
-.target-sum-pill.err { background:rgba(239,68,68,.1); color:var(--accent-red); border:1px solid rgba(239,68,68,.25); }
-.ok-text { color:var(--accent-green); }
-.err-text { color:var(--accent-red); }
-
-/* ── Platform picker ── */
-.platform-grid-wrap { padding:12px; }
-.platform-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; width:100%; }
-.platform-opt { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px 6px; border-radius:10px; border:1.5px solid var(--border2); background:var(--bg2); cursor:pointer; color:var(--text3); font-size:10px; font-weight:500; transition:border-color .15s,background .15s,color .15s,transform .15s; text-align:center; min-width:0; }
-.platform-opt:hover { border-color:var(--p-color); color:var(--text); background:color-mix(in srgb, var(--p-color) 6%, var(--bg2)); transform:translateY(-1px); }
-.platform-opt.active { border-color:var(--p-color); background:color-mix(in srgb, var(--p-color) 14%, var(--bg2)); color:var(--p-color); font-weight:600; }
-.platform-opt-ico { width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:7px; overflow:hidden; }
-.platform-opt-ico svg,.platform-opt-ico img { width:28px; height:28px; display:block; object-fit:contain; }
-.platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; line-height:1.2; }
-.platform-expand-btn { display:flex; align-items:center; justify-content:center; gap:6px; margin-top:8px; width:100%; padding:8px; background:transparent; border:1px dashed var(--border2); border-radius:9px; color:var(--text3); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .15s,color .15s,border-color .15s; }
-.platform-expand-btn:hover { background:var(--surface2); color:var(--text2); border-color:var(--border2); border-style:solid; }
-@media (max-width:540px) { .platform-grid { grid-template-columns:repeat(3,1fr); gap:5px; } }
-@media (min-width:541px) and (max-width:768px) { .platform-grid { grid-template-columns:repeat(4,1fr); } }
-
-/* ── Assets view toggle ── */
-.assets-view-toggle { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.assets-toolbar-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-
-/* ── Assets table ── */
-.assets-table { display:flex; flex-direction:column; gap:6px; }
-.assets-thead { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 0.9fr 32px; gap:9px; padding:0 12px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
-.assets-trow { display:grid; grid-template-columns:2fr 1fr 1fr 1fr 0.9fr 32px; gap:9px; align-items:center; padding:11px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:border-color .18s,background .18s; }
-.assets-trow:hover { border-color:var(--border2); background:var(--surface2); }
-.asset-name-cell { display:flex; align-items:center; gap:9px; min-width:0; }
-.asset-text-inp { background:transparent; border:none; outline:none; color:var(--text); font-family:inherit; display:block; line-height:1.35; }
-.asset-text-inp:focus { background:rgba(99,102,241,.1); border-radius:4px; padding:1px 5px; }
-.asset-select { background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; color:var(--text2); font-size:12px; font-family:inherit; padding:6px 8px; outline:none; cursor:pointer; transition:border-color .18s; }
-.asset-select:focus { border-color:rgba(99,102,241,.5); outline:none; }
-
-/* ── Category allocation table ── */
-.cat-alloc-table { display:flex; flex-direction:column; gap:6px; }
-.cat-alloc-head { display:grid; grid-template-columns:1.6fr 1fr 80px 100px; gap:10px; padding:0 12px 8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.9px; color:var(--text4); }
-.cat-alloc-row { display:grid; grid-template-columns:1.6fr 1fr 80px 100px; gap:10px; align-items:center; padding:11px 12px; border-radius:12px; background:var(--surface); border:1px solid var(--border); transition:border-color .18s,background .18s; }
-.cat-alloc-row:hover { border-color:var(--border2); background:var(--surface2); }
-.cat-alloc-label { display:flex; align-items:center; gap:7px; min-width:0; }
-.cat-alloc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
-.cat-alloc-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; }
-.cat-alloc-count { font-size:11px; color:var(--text4); background:var(--surface2); border-radius:10px; padding:1px 7px; flex-shrink:0; border:1px solid var(--border); }
-.cat-alloc-assets { display:flex; flex-wrap:wrap; gap:4px; min-width:0; }
-.cat-alloc-chip { font-size:10px; font-weight:700; padding:2px 6px; border-radius:5px; white-space:nowrap; font-family:'JetBrains Mono',monospace; }
-.cat-alloc-cur { font-size:13px; color:var(--text2); text-align:right; font-family:'JetBrains Mono',monospace; }
-.cat-alloc-inp-wrap { display:flex; align-items:center; gap:4px; justify-content:flex-end; }
-.cat-alloc-inp { width:56px !important; text-align:right; }
-.cat-alloc-foot { display:grid; grid-template-columns:1.6fr 1fr 80px 100px; gap:10px; padding:10px 12px 4px; font-size:12px; font-weight:700; color:var(--text3); border-top:1px solid var(--border); margin-top:4px; }
-.cat-alloc-foot .mono { font-size:13px; text-align:right; }
-@media (max-width:600px) {
-  .cat-alloc-head,.cat-alloc-row,.cat-alloc-foot { grid-template-columns:1fr 80px 90px; }
-  .cat-alloc-assets,.cat-alloc-head span:nth-child(2) { display:none; }
-}
-
-/* ── Data section ── */
-.data-stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-.data-stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 12px 12px; display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; }
-.data-stat-ico { width:28px; height:28px; border-radius:8px; background:rgba(99,102,241,.1); display:flex; align-items:center; justify-content:center; color:var(--accent-indigo); }
-.data-stat-val { font-size:15px; font-weight:700; color:var(--text); }
-.data-stat-lbl { font-size:11px; color:var(--text4); font-weight:500; }
-.data-action-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 16px; }
-.data-action-info { flex:1; min-width:0; }
-.data-footer-note { display:flex; align-items:flex-start; gap:8px; margin-top:16px; padding:12px 14px; background:rgba(99,102,241,.06); border:1px solid rgba(99,102,241,.14); border-radius:10px; font-size:12px; color:var(--text3); line-height:1.6; }
-.data-footer-note strong { color:var(--text2); }
-@media (max-width:480px) { .data-stat-grid { grid-template-columns:repeat(2,1fr); } }
-
-/* ── Projection block ── */
-.proj-block { padding:13px 16px 16px; }
-.proj-block-hdr { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:18px; }
-.proj-val-pill { display:inline-flex; align-items:baseline; gap:3px; padding:5px 14px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.25); border-radius:20px; color:var(--accent-indigo); font-size:20px; font-weight:700; line-height:1; flex-shrink:0; }
-.proj-val-pill span { font-size:11px; font-weight:500; color:var(--text3); }
-
-/* ── Note input ── */
-.note-input { width:100%; margin-top:16px; padding:11px 14px; background:var(--surface); border:1px solid var(--border2); border-radius:10px; color:var(--text); font-size:14px; font-family:inherit; outline:none; resize:vertical; min-height:64px; line-height:1.55; transition:border-color .2s; }
-.note-input:focus { border-color:rgba(99,102,241,.45); }
-.note-input::placeholder { color:var(--text4); }
-
-/* ── ANIMATIONS ── */
-@keyframes fadeSlideIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.85)} }
-@keyframes growBar { from{width:0!important} }
-@keyframes slideIn { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
-@keyframes modalIn { from{opacity:0;transform:scale(.96) translateY(14px)} to{opacity:1;transform:scale(1) translateY(0)} }
-
-/* ════════════ MID-RANGE (769–1279px) ════════════ */
-@media (min-width:769px) and (max-width:1279px) {
-.wrap { max-width:900px; padding:36px 24px 80px; }
-.hdr-title { font-size:32px; }
-.kpi-grid { grid-template-columns:repeat(4,1fr); gap:10px; }
-.kpi-v { font-size:20px; }
-/* keep horizontal tabs with full labels */
-.tabs { margin-bottom:18px; }
-.tab-full { display:inline; }
-.tab-short { display:none; }
-/* full 5-col drift row at this range */
-.d-row { grid-template-columns:minmax(110px,1.4fr) minmax(56px,auto) 1fr auto minmax(100px,auto); }
-.d-bar-area,.d-status { display:flex; }
-.d-mob-drift { display:none; }
-}
-
-/* ════════════ TABLET (≤768px) ════════════ */
-@media (max-width:768px) {
-.wrap { padding:28px 18px 80px; }
-.hdr-title { font-size:28px; }
-.kpi-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-.kpi-v { font-size:20px; }
-.tab { padding:9px 8px; font-size:12px; }
-.tab-full { display:none; }
-.tab-short { display:inline; font-size:11px; }
-/* tablet: ticker | value | drift-cell; bar & status hidden */
-.d-row { grid-template-columns:1fr minmax(56px,auto) auto; grid-template-rows:auto; gap:6px 10px; }
-.d-bar-area,.d-status { display:none; }
-.d-mob-drift { display:flex; align-items:center; gap:8px; grid-column:1/-1; padding-top:4px; }
-.d-mob-bar-track { flex:1; height:5px; border-radius:3px; background:var(--surface2); overflow:hidden; }
-.d-mob-bar-fill { height:100%; border-radius:3px; animation:growBar .7s ease both; }
-.cat-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-.editor-grid { grid-template-columns:1fr; }
-.h-grid { grid-template-columns:1fr; }
-.h-kpi-v { font-size:24px; }
-.assets-thead,.assets-trow { grid-template-columns:2fr 1fr 1fr 1fr 36px; }
-.assets-thead span:nth-child(5),.assets-trow .editor-inp-wrap:nth-of-type(3) { display:none; }
-.close-month-section { flex-direction:column; align-items:flex-start; }
-.setting-row { flex-direction:column; align-items:flex-start; gap:10px; padding:12px 14px; }
-.setting-ctrl { align-self:flex-start; }
-.modal-tab { padding:10px 12px; font-size:12px; }
-.lg-modal { max-height:92vh; }
-.data-action-row { flex-direction:column; align-items:flex-start; gap:10px; padding:12px 14px; }
-}
-
-/* ════════════ MOBILE (≤480px) ════════════ */
-@media (max-width:480px) {
-.wrap { padding:16px 12px 72px; }
-.hdr-title { font-size:22px; letter-spacing:-.3px; }
-.hdr-tag { font-size:10px; }
-.kpi-grid { grid-template-columns:repeat(2,1fr); gap:8px; }
-.kpi { padding:12px 11px 10px; border-radius:12px; }
-.kpi-v { font-size:17px; }
-.kpi-l { font-size:10px; }
-.kpi-s { font-size:11px; }
-.tabs { gap:2px; padding:3px; }
-.tab { padding:8px 6px; }
-.cat-grid { gap:8px; }
-.cat-v { font-size:20px; }
-.d-ticker { font-size:12px; }
-.buy-card { padding:12px 14px; gap:10px; }
-.buy-ico { width:36px; height:36px; }
-.buy-amt { font-size:19px; }
-.buy-name { font-size:14px; }
-.h-kpis { gap:8px; }
-.h-kpi { padding:16px 10px; }
-.h-kpi-v { font-size:22px; }
-.h-kpi-l { font-size:10px; }
-.safety { padding:13px 14px; }
-.note { padding:13px 14px; font-size:12px; }
-.total-bar { padding:11px 14px; }
-.total-l { font-size:13px; }
-.total-v { font-size:16px; }
-.editor-row { padding:9px 12px; }
-.modal { border-radius:18px; }
-.lg-modal { max-height:94vh; }
-.sm-modal { padding:24px 18px; }
-.sm-modal h3 { font-size:17px; }
-.modal-hdr { padding:14px 16px; }
-.modal-tabs { padding:0 14px; }
-.modal-tab { padding:10px 10px; font-size:12px; gap:5px; }
-.modal-body { padding:14px; }
-.settings-group-label { font-size:10px; }
-.assets-thead { display:none; }
-.assets-trow { grid-template-columns:1fr; gap:8px; padding:14px; }
-.assets-trow > * { width:100%; }
-.assets-trow .editor-inp-wrap { justify-self:start; }
-.assets-trow .asset-name-cell { padding-bottom:6px; border-bottom:1px dashed var(--border2); }
-.assets-trow .icon-btn { position:absolute; top:10px; right:10px; }
-.assets-trow { position:relative; }
-.close-month-section { padding:14px; }
-.hist-assets { grid-template-columns:repeat(2,1fr); }
-.hist-total { font-size:22px; }
-.sparkline-card { padding:12px 14px; }
-}
-
-/* ── PLATFORM BADGE ── */
-.platform-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px 2px 4px; border-radius:20px; background:color-mix(in srgb, var(--p-color) 15%, transparent); color:var(--p-color); font-size:12px; font-weight:600; vertical-align:middle; line-height:1.3; }
-.platform-ico { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:4px; overflow:hidden; }
-.platform-ico svg,.platform-ico img { width:16px; height:16px; display:block; }
-.platform-fallback { width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:color-mix(in srgb, var(--p-color) 22%, #0f172a); color:#fff; font-size:9px; font-weight:700; letter-spacing:.3px; border-radius:inherit; text-transform:uppercase; }
-
-/* ── PLATFORM PICKER ── */
-.platform-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; width:100%; }
-.platform-opt { display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px 6px; border-radius:10px; border:1.5px solid var(--border2); background:var(--surface); cursor:pointer; color:var(--text3); font-size:10px; font-weight:500; transition:border-color .15s,background .15s,color .15s; text-align:center; min-width:0; }
-.platform-opt:hover { border-color:var(--p-color); color:var(--text); background:color-mix(in srgb, var(--p-color) 8%, var(--surface)); }
-.platform-opt.active { border-color:var(--p-color); background:color-mix(in srgb, var(--p-color) 15%, var(--surface)); color:var(--p-color); font-weight:600; }
-.platform-opt-ico { width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0; border-radius:6px; overflow:hidden; }
-.platform-opt-ico svg,.platform-opt-ico img { width:28px; height:28px; display:block; object-fit:contain; }
-.platform-opt-ico .platform-fallback { font-size:10px; }
-.platform-opt-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; line-height:1.2; }
-@media (max-width:540px) { .platform-grid { grid-template-columns:repeat(3,1fr); gap:5px; } }
-@media (min-width:541px) and (max-width:768px) { .platform-grid { grid-template-columns:repeat(4,1fr); } }
-.platform-expand-btn { margin-top:8px; width:100%; padding:7px; background:transparent; border:1px dashed var(--border2); border-radius:8px; color:var(--text3); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .15s,color .15s,border-color .15s; }
-.platform-expand-btn:hover { background:var(--surface2); color:var(--text); border-color:var(--border2); border-style:solid; }
-
-/* ── PROJECTION HORIZON ── */
-.proj-block { padding:10px 0 18px; }
-.proj-block-compact { max-width:560px; margin-inline:auto; }
-.proj-block-hdr { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:16px; }
-.proj-val-pill { display:inline-flex; align-items:baseline; gap:3px; padding:4px 12px; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.25); border-radius:20px; color:var(--accent-indigo); font-size:20px; font-weight:700; line-height:1; }
-.proj-val-pill span { font-size:11px; font-weight:500; color:var(--text3); }
-.proj-slider-wrap { display:flex; flex-direction:column; gap:10px; }
-.proj-block-compact .proj-slider-wrap { max-width:460px; }
-.proj-slider-shell { padding:0 2px; }
-.proj-slider { -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:999px; outline:none; cursor:pointer; border:none; background:linear-gradient(to right, var(--accent-indigo) var(--pct,0%), var(--border2) var(--pct,0%)); }
-.proj-slider::-webkit-slider-runnable-track { height:8px; border-radius:999px; background:transparent; }
-.proj-slider::-moz-range-track { height:8px; border-radius:999px; background:transparent; }
-.proj-slider::-webkit-slider-thumb { -webkit-appearance:none; margin-top:-6px; width:20px; height:20px; border-radius:50%; background:var(--accent-indigo); border:3px solid var(--bg2); box-shadow:0 0 0 2px rgba(99,102,241,.3),0 2px 8px rgba(99,102,241,.35); cursor:pointer; transition:transform .15s,box-shadow .15s; }
-.proj-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:var(--accent-indigo); border:3px solid var(--bg2); box-shadow:0 0 0 2px rgba(99,102,241,.3),0 2px 8px rgba(99,102,241,.35); cursor:pointer; transition:transform .15s,box-shadow .15s; }
-.proj-slider::-webkit-slider-thumb:hover { transform:scale(1.12); box-shadow:0 0 0 4px rgba(99,102,241,.2),0 4px 14px rgba(99,102,241,.4); }
-.proj-slider:focus-visible::-webkit-slider-thumb { box-shadow:0 0 0 4px rgba(99,102,241,.35),0 2px 8px rgba(99,102,241,.35); }
-.proj-ticks { display:flex; justify-content:space-between; align-items:center; pointer-events:none; padding:0 2px; }
-.proj-tick { font-size:10px; font-weight:500; color:var(--text4); transition:color .2s,font-weight .2s; }
-.proj-tick.hit { color:var(--accent-indigo); font-weight:700; }
-
-/* ── CONTENT TRANSITION ── */
-.content { animation:fadeSlideIn .38s cubic-bezier(.16,1,.3,1); }
-.content-out { opacity:0; transform:translateY(8px); transition:opacity .15s ease,transform .15s ease; pointer-events:none; }
-@keyframes fadeSlideIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-
-/* ── GLASSMORPHISM SURFACES ── */
-.kpi,.buy-card,.cat-card,.d-row,.h-card,.safety,.after-row,.sparkline-card,.whatif-panel {
-  backdrop-filter:blur(12px) saturate(140%);
-  -webkit-backdrop-filter:blur(12px) saturate(140%);
-}
-.modal-inner,.settings-sidebar {
-  backdrop-filter:blur(20px) saturate(160%);
-  -webkit-backdrop-filter:blur(20px) saturate(160%);
-}
-
-/* ── DRIFT CELL ── */
-.drift-cell { display:flex; flex-direction:column; gap:3px; align-items:flex-end; min-width:60px; }
-.drift-cell-track { width:48px; height:4px; border-radius:3px; background:var(--surface2); overflow:hidden; display:flex; flex-shrink:0; }
-.drift-cell-fill { height:100%; border-radius:3px; animation:growBar .7s ease both; min-width:2px; }
-.drift-cell-val { font-size:12px; font-weight:700; letter-spacing:.2px; white-space:nowrap; }
-
-/* ── COMMAND PALETTE ── */
-.cmd-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding-top:14vh; animation:fadeIn .15s ease; backdrop-filter:blur(4px); }
-@keyframes fadeIn { from{opacity:0} to{opacity:1} }
-.cmd-palette { width:min(580px,92vw); background:var(--bg2); border:1px solid var(--border2); border-radius:16px; overflow:hidden; box-shadow:0 24px 64px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04); animation:modalIn .2s cubic-bezier(.16,1,.3,1); backdrop-filter:blur(24px); }
-.cmd-input-row { display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid var(--border); }
-.cmd-input { flex:1; background:transparent; border:none; outline:none; font-size:16px; color:var(--text); font-family:inherit; }
-.cmd-input::placeholder { color:var(--text4); }
-.cmd-kbd { padding:3px 7px; background:var(--surface2); border:1px solid var(--border2); border-radius:5px; font-size:11px; color:var(--text3); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
-.cmd-list { max-height:320px; overflow-y:auto; padding:6px; scrollbar-width:thin; }
-.cmd-item { width:100%; display:flex; align-items:center; gap:10px; padding:10px 12px; border:none; border-radius:10px; cursor:pointer; background:transparent; color:var(--text2); font-size:14px; font-family:inherit; transition:background .12s; text-align:left; }
-.cmd-item.sel,.cmd-item:hover { background:var(--kpi-active); color:var(--text); }
-.cmd-ico { width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:7px; background:var(--surface2); flex-shrink:0; color:var(--text3); }
-.cmd-lbl { flex:1; font-size:14px; }
-.cmd-tag { font-size:10px; color:var(--text4); background:var(--surface2); padding:2px 7px; border-radius:4px; text-transform:uppercase; letter-spacing:.5px; }
-.cmd-empty { padding:32px 16px; text-align:center; color:var(--text4); font-size:14px; }
-.cmd-foot { display:flex; gap:16px; padding:10px 16px; border-top:1px solid var(--border); font-size:12px; color:var(--text4); }
-.cmd-foot kbd { display:inline-block; padding:1px 6px; background:var(--surface2); border:1px solid var(--border2); border-radius:4px; font-size:11px; font-family:'JetBrains Mono',monospace; }
-
-
-/* ── SIDEBAR LAYOUT (desktop ≥1280px) ── */
-@media (min-width:1280px) {
-.wrap { max-width:1400px; padding-left:36px; padding-right:36px; }
-.pr-layout { display:grid; grid-template-columns:200px 1fr; gap:28px; align-items:start; }
-/* Hide the horizontal tab bar on desktop — sidebar replaces it */
-.tabs:not(.pr-sidebar) { display:none; }
-.pr-sidebar {
-  position:sticky; top:28px;
-  display:flex; flex-direction:column; gap:2px;
-  background:var(--surface); border:1px solid var(--border);
-  border-radius:16px; padding:8px;
-  overflow:hidden;
-  /* override the horizontal tabs margin-bottom */
-  margin-bottom:0 !important;
-}
-.pr-sidebar .tab {
-  width:100%; justify-content:flex-start; gap:10px;
-  padding:10px 12px; border-radius:10px;
-  border-bottom:none; border-left:3px solid transparent;
-  border-right:none; font-size:13px; font-weight:500;
-  color:var(--text2);
-}
-.pr-sidebar .tab.active {
-  background:var(--kpi-active); color:var(--accent-indigo);
-  font-weight:600; border-left-color:var(--accent-indigo);
-  border-bottom-color:transparent;
-}
-.pr-sidebar .tab:hover:not(.active) { background:var(--surface2); color:var(--text); }
-.pr-sidebar .tab-short { display:none; }
-.pr-sidebar .tab-full { display:inline; }
-.pr-sidebar .tab-ico { width:15px; height:15px; opacity:1; }
-.content-wrap { min-width:0; }
-}
-
-/* ── PRINT ── */
-@media print {
-.tabs,.editor-panel,.close-month-section,.hdr-actions,.pr-glow,.toast { display:none!important; }
-.pr { background:white!important; color:black!important; }
-.content { animation:none!important; }
-.kpi { border:1px solid #ccc!important; }
-}
-`; }

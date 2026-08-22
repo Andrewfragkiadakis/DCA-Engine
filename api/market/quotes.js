@@ -2,17 +2,19 @@ const CACHE = global.__quotesCache || new Map();
 global.__quotesCache = CACHE;
 
 const TTL_MS = 60 * 1000;
+// currency: the native currency each provider quotes this symbol in.
+// GBp = British pence (1/100 GBP) — Finnhub/Polygon return LSE prices in pence.
 const DEFAULT_SYMBOL_MAP = {
   BTC: { assetClass: "crypto", coingeckoId: "bitcoin", binanceSymbol: "BTCUSDT" },
   ETH: { assetClass: "crypto", coingeckoId: "ethereum", binanceSymbol: "ETHUSDT" },
-  NVDA: { assetClass: "equity", twelveData: "NVDA", finnhub: "NVDA", polygon: "NVDA" },
-  AAPL: { assetClass: "equity", twelveData: "AAPL", finnhub: "AAPL", polygon: "AAPL" },
-  MSFT: { assetClass: "equity", twelveData: "MSFT", finnhub: "MSFT", polygon: "MSFT" },
-  KO: { assetClass: "equity", twelveData: "KO", finnhub: "KO", polygon: "KO" },
-  JNJ: { assetClass: "equity", twelveData: "JNJ", finnhub: "JNJ", polygon: "JNJ" },
-  SPY: { assetClass: "equity", twelveData: "SPY", finnhub: "SPY", polygon: "SPY" },
-  VWCE: { assetClass: "equity", twelveData: "VWCE.DE", finnhub: "VWCE.DE", polygon: "VWCE" },
-  VHYL: { assetClass: "equity", twelveData: "VHYL.LON", finnhub: "VHYL.L", polygon: "VHYL" },
+  NVDA: { assetClass: "equity", twelveData: "NVDA", finnhub: "NVDA", polygon: "NVDA", currency: "USD" },
+  AAPL: { assetClass: "equity", twelveData: "AAPL", finnhub: "AAPL", polygon: "AAPL", currency: "USD" },
+  MSFT: { assetClass: "equity", twelveData: "MSFT", finnhub: "MSFT", polygon: "MSFT", currency: "USD" },
+  KO: { assetClass: "equity", twelveData: "KO", finnhub: "KO", polygon: "KO", currency: "USD" },
+  JNJ: { assetClass: "equity", twelveData: "JNJ", finnhub: "JNJ", polygon: "JNJ", currency: "USD" },
+  SPY: { assetClass: "equity", twelveData: "SPY", finnhub: "SPY", polygon: "SPY", currency: "USD" },
+  VWCE: { assetClass: "equity", twelveData: "VWCE.DE", finnhub: "VWCE.DE", polygon: "VWCE", currency: "EUR" },
+  VHYL: { assetClass: "equity", twelveData: "VHYL.LON", finnhub: "VHYL.L", polygon: "VHYL", currency: "GBp" },
 };
 
 function json(res, code, payload) {
@@ -57,7 +59,8 @@ async function quoteFromCoinGecko(assets) {
     const row = data[id];
     if (!row || typeof row.usd !== "number") continue;
     out[ticker] = {
-      priceUsd: row.usd,
+      price: row.usd,
+      currency: "USD",
       dayChangePct: typeof row.usd_24h_change === "number" ? row.usd_24h_change : 0,
       source: "coingecko",
     };
@@ -71,7 +74,13 @@ async function quoteFromBinance(asset) {
   const price = parseFloat(data.lastPrice);
   const change = parseFloat(data.priceChangePercent);
   if (!Number.isFinite(price)) return null;
-  return { priceUsd: price, dayChangePct: Number.isFinite(change) ? change : 0, source: "binance" };
+  return { price, currency: "USD", dayChangePct: Number.isFinite(change) ? change : 0, source: "binance" };
+}
+
+// Normalize a raw price + its native currency to a plain ISO currency (GBp pence -> GBP).
+function normalizeCurrency(price, nativeCurrency) {
+  if (nativeCurrency === "GBp") return { price: price / 100, currency: "GBP" };
+  return { price, currency: String(nativeCurrency || "USD").toUpperCase() };
 }
 
 async function quoteFromTwelveData(asset) {
@@ -79,10 +88,12 @@ async function quoteFromTwelveData(asset) {
   const data = await fetchJson(
     `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(asset.twelveData)}&apikey=${encodeURIComponent(process.env.TWELVE_DATA_API_KEY)}`
   );
-  const price = parseFloat(data.close || data.price);
+  const rawPrice = parseFloat(data.close || data.price);
   const change = parseFloat(data.percent_change);
-  if (!Number.isFinite(price)) return null;
-  return { priceUsd: price, dayChangePct: Number.isFinite(change) ? change : 0, source: "twelve-data" };
+  if (!Number.isFinite(rawPrice)) return null;
+  // Twelve Data reports the listing currency; fall back to our static map if absent.
+  const { price, currency } = normalizeCurrency(rawPrice, data.currency || asset.currency || "USD");
+  return { price, currency, dayChangePct: Number.isFinite(change) ? change : 0, source: "twelve-data" };
 }
 
 async function quoteFromFinnhub(asset) {
@@ -90,11 +101,13 @@ async function quoteFromFinnhub(asset) {
   const data = await fetchJson(
     `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(asset.finnhub)}&token=${encodeURIComponent(process.env.FINNHUB_API_KEY)}`
   );
-  const price = parseFloat(data.c);
+  const rawPrice = parseFloat(data.c);
   const prev = parseFloat(data.pc);
-  if (!Number.isFinite(price)) return null;
-  const pct = Number.isFinite(prev) && prev > 0 ? ((price - prev) / prev) * 100 : 0;
-  return { priceUsd: price, dayChangePct: pct, source: "finnhub" };
+  if (!Number.isFinite(rawPrice)) return null;
+  const pct = Number.isFinite(prev) && prev > 0 ? ((rawPrice - prev) / prev) * 100 : 0;
+  // Finnhub doesn't report currency — use our static per-symbol map (e.g. VHYL.L quotes in GBp).
+  const { price, currency } = normalizeCurrency(rawPrice, asset.currency || "USD");
+  return { price, currency, dayChangePct: pct, source: "finnhub" };
 }
 
 async function quoteFromPolygon(asset) {
@@ -102,9 +115,10 @@ async function quoteFromPolygon(asset) {
   const data = await fetchJson(
     `https://api.polygon.io/v2/last/trade/${encodeURIComponent(asset.polygon)}?apiKey=${encodeURIComponent(process.env.POLYGON_API_KEY)}`
   );
-  const price = parseFloat(data?.results?.p);
-  if (!Number.isFinite(price)) return null;
-  return { priceUsd: price, dayChangePct: 0, source: "polygon" };
+  const rawPrice = parseFloat(data?.results?.p);
+  if (!Number.isFinite(rawPrice)) return null;
+  const { price, currency } = normalizeCurrency(rawPrice, asset.currency || "USD");
+  return { price, currency, dayChangePct: 0, source: "polygon" };
 }
 
 async function quoteFromCoinMarketCap(asset) {
@@ -116,16 +130,25 @@ async function quoteFromCoinMarketCap(asset) {
   const row = data?.data?.[asset.ticker]?.[0]?.quote?.USD;
   if (!row || typeof row.price !== "number") return null;
   return {
-    priceUsd: row.price,
+    price: row.price,
+    currency: "USD",
     dayChangePct: typeof row.percent_change_24h === "number" ? row.percent_change_24h : 0,
     source: "coinmarketcap",
   };
+}
+
+function evictExpiredCacheEntries(now) {
+  for (const [key, entry] of CACHE) {
+    if (entry.expiresAt <= now) CACHE.delete(key);
+  }
 }
 
 module.exports = async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") return json(res, 405, { ok: false, error: "Method not allowed" });
 
   try {
+    evictExpiredCacheEntries(Date.now());
+
     const body = req.method === "POST" ? (req.body || {}) : req.query;
     const assetsRaw = Array.isArray(body.assets) ? body.assets : [];
     const includeUnmapped = String(body.includeUnmapped || "false") === "true";

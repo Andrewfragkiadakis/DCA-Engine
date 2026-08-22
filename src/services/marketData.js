@@ -1,14 +1,14 @@
 const DEFAULT_SYMBOL_MAP = {
   BTC: { coingeckoId: "bitcoin", binanceSymbol: "BTCUSDT", assetClass: "crypto" },
   ETH: { coingeckoId: "ethereum", binanceSymbol: "ETHUSDT", assetClass: "crypto" },
-  NVDA: { twelveData: "NVDA", finnhub: "NVDA", polygon: "NVDA", assetClass: "equity" },
-  AAPL: { twelveData: "AAPL", finnhub: "AAPL", polygon: "AAPL", assetClass: "equity" },
-  MSFT: { twelveData: "MSFT", finnhub: "MSFT", polygon: "MSFT", assetClass: "equity" },
-  KO: { twelveData: "KO", finnhub: "KO", polygon: "KO", assetClass: "equity" },
-  JNJ: { twelveData: "JNJ", finnhub: "JNJ", polygon: "JNJ", assetClass: "equity" },
-  SPY: { twelveData: "SPY", finnhub: "SPY", polygon: "SPY", assetClass: "equity" },
-  VWCE: { twelveData: "VWCE.DE", finnhub: "VWCE.DE", polygon: "VWCE", assetClass: "equity" },
-  VHYL: { twelveData: "VHYL.LON", finnhub: "VHYL.L", polygon: "VHYL", assetClass: "equity" },
+  NVDA: { twelveData: "NVDA", finnhub: "NVDA", polygon: "NVDA", assetClass: "equity", currency: "USD" },
+  AAPL: { twelveData: "AAPL", finnhub: "AAPL", polygon: "AAPL", assetClass: "equity", currency: "USD" },
+  MSFT: { twelveData: "MSFT", finnhub: "MSFT", polygon: "MSFT", assetClass: "equity", currency: "USD" },
+  KO: { twelveData: "KO", finnhub: "KO", polygon: "KO", assetClass: "equity", currency: "USD" },
+  JNJ: { twelveData: "JNJ", finnhub: "JNJ", polygon: "JNJ", assetClass: "equity", currency: "USD" },
+  SPY: { twelveData: "SPY", finnhub: "SPY", polygon: "SPY", assetClass: "equity", currency: "USD" },
+  VWCE: { twelveData: "VWCE.DE", finnhub: "VWCE.DE", polygon: "VWCE", assetClass: "equity", currency: "EUR" },
+  VHYL: { twelveData: "VHYL.LON", finnhub: "VHYL.L", polygon: "VHYL", assetClass: "equity", currency: "GBp" },
 };
 
 const FX_SYMBOLS = ["USD", "EUR", "GBP", "CHF"];
@@ -56,15 +56,29 @@ export async function fetchFxRates(base = "USD") {
   return data;
 }
 
-export function buildLiveModel({ assets, quotesData, fxData, currency, baselineTotal }) {
+// Convert a price quoted in `from` currency to `to` currency, given rates that are
+// all relative to the same base (rates[X] = units of X per 1 base unit).
+export function convertPrice(price, from, to, rates) {
+  if (price == null) return null;
+  const fromCode = from || "USD";
+  const toCode = to || "USD";
+  if (fromCode === toCode) return price;
+  const fromRate = rates?.[fromCode];
+  const toRate = rates?.[toCode];
+  if (!fromRate || !toRate) return null;
+  return (price / fromRate) * toRate;
+}
+
+export function buildLiveModel({ assets, quotesData, fxData, currency }) {
   const quotes = quotesData?.quotes || {};
   const rates = fxData?.rates || { USD: 1 };
-  const usdToCurrency = rates[currency] || 1;
 
   const rows = assets.map(asset => {
     const quote = quotes[asset.ticker] || null;
     const dayChangePct = quote?.dayChangePct || 0;
-    const livePriceInCurrency = quote?.priceUsd ? quote.priceUsd * usdToCurrency : null;
+    const livePriceInCurrency = quote?.price != null
+      ? convertPrice(quote.price, quote.currency, currency, rates)
+      : null;
 
     // If holdings are set and we have a live price, compute real value
     const hasHoldings = asset.holdings != null && asset.holdings > 0 && livePriceInCurrency != null;
@@ -73,6 +87,7 @@ export function buildLiveModel({ assets, quotesData, fxData, currency, baselineT
       : asset.current * (1 + dayChangePct / 100);
     const baseValue = hasHoldings ? liveValue / (1 + dayChangePct / 100) : asset.current;
     const dailyPnl = liveValue - baseValue;
+    const costBasis = asset.costBasis != null ? asset.costBasis : baseValue;
 
     return {
       ticker: asset.ticker,
@@ -83,6 +98,7 @@ export function buildLiveModel({ assets, quotesData, fxData, currency, baselineT
       baseValue,
       liveValue,
       dailyPnl,
+      costBasis,
       quotePrice: livePriceInCurrency,
       holdings: asset.holdings,
       holdingsComputed: hasHoldings,
@@ -94,9 +110,11 @@ export function buildLiveModel({ assets, quotesData, fxData, currency, baselineT
   const dailyPnl = totalLive - totalBase;
   const dailyPnlPct = totalBase > 0 ? (dailyPnl / totalBase) * 100 : 0;
 
-  const baseline = Number.isFinite(baselineTotal) && baselineTotal > 0 ? baselineTotal : totalBase;
-  const totalReturn = totalLive - baseline;
-  const totalReturnPct = baseline > 0 ? (totalReturn / baseline) * 100 : 0;
+  // Total Return = live value vs. actual money invested (cost basis), not vs. an
+  // arbitrary "since live tracking was enabled" snapshot.
+  const totalCostBasis = rows.reduce((sum, r) => sum + r.costBasis, 0);
+  const totalReturn = totalLive - totalCostBasis;
+  const totalReturnPct = totalCostBasis > 0 ? (totalReturn / totalCostBasis) * 100 : 0;
 
   const contributions = rows
     .map(r => ({
