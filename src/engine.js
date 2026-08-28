@@ -56,12 +56,27 @@ export function addMonths(ym, n) {
   return `${ny}-${String(nm).padStart(2, "0")}`;
 }
 
+// Cash you can actually deploy right now: the broker's available balance, minus orders
+// already queued (savings plans due to execute), minus a buffer you keep untouched.
+export function freeCash(cash) {
+  const available = sanitizeNum(cash?.available, 0, 10_000_000, 0);
+  const committed = sanitizeNum(cash?.committed, 0, 10_000_000, 0);
+  const buffer    = sanitizeNum(cash?.buffer, 0, 10_000_000, 0);
+  return Math.max(0, available - committed - buffer);
+}
+
 export function enrich(list, total) {
   return list.map(a => {
     const pct   = total > 0 ? (a.current / total) * 100 : 0;
     const drift = pct - a.target;
     const gap   = (a.target / 100) * total - a.current;
-    return { ...a, pct, drift, gap };
+    // Return since purchase, the same figure Trade Republic shows per position.
+    // Null (not zero) when there's no cost basis to compare against, so the UI can
+    // distinguish "flat" from "unknown".
+    const basis = a.costBasis;
+    const sinceBuyPct = basis != null && basis > 0 ? ((a.current - basis) / basis) * 100 : null;
+    const sinceBuyAbs = basis != null && basis > 0 ? a.current - basis : null;
+    return { ...a, pct, drift, gap, sinceBuyPct, sinceBuyAbs };
   });
 }
 

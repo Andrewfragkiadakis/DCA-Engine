@@ -7,6 +7,7 @@ const DEFAULT_SYMBOL_MAP = {
   KO: { twelveData: "KO", finnhub: "KO", polygon: "KO", assetClass: "equity", currency: "USD" },
   JNJ: { twelveData: "JNJ", finnhub: "JNJ", polygon: "JNJ", assetClass: "equity", currency: "USD" },
   SPY: { twelveData: "SPY", finnhub: "SPY", polygon: "SPY", assetClass: "equity", currency: "USD" },
+  CSPX: { twelveData: "SXR8.DE", finnhub: "SXR8.DE", polygon: "CSPX", assetClass: "equity", currency: "EUR" },
   VWCE: { twelveData: "VWCE.DE", finnhub: "VWCE.DE", polygon: "VWCE", assetClass: "equity", currency: "EUR" },
   VHYL: { twelveData: "VHYL.LON", finnhub: "VHYL.L", polygon: "VHYL", assetClass: "equity", currency: "GBp" },
 };

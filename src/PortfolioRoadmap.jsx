@@ -6,7 +6,7 @@ import { importBrokerCsv, importTradeRepublicPdf } from "./services/brokerImport
 import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   currentMonthYM, activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
-  enrich, allocate, runProjection,
+  enrich, allocate, runProjection, freeCash,
 } from "./engine";
 import "./styles.css";
 
@@ -37,6 +37,7 @@ const OFFICIAL_TICKER_ICONS = {
   KO: "coca_cola",
   JNJ: "jnj",
   SPY: "spy",
+  CSPX: "spy",
   VWCE: "vwce",
   VHYL: "vhyl",
 };
@@ -48,8 +49,8 @@ const Icons = {
   apple:       <img src="/icons/aapl.svg" alt="Apple" loading="lazy" decoding="async"/>,
   microsoft:   <img src="/icons/msft.svg" alt="Microsoft" loading="lazy" decoding="async"/>,
   coca_cola:   <img src="/icons/ko.svg" alt="Coca-Cola" loading="lazy" decoding="async"/>,
-  jnj:         <img src="/icons/j%26j.png" alt="Johnson & Johnson" loading="lazy" decoding="async"/>,
-  spy:         <img src="/icons/s%26p.png" alt="SPY (S&P)" loading="lazy" decoding="async"/>,
+  jnj:         <img src="/icons/jnj.png" alt="Johnson &amp; Johnson" loading="lazy" decoding="async"/>,
+  spy:         <img src="/icons/sp500.png" alt="S&amp;P 500" loading="lazy" decoding="async"/>,
   vwce:        <img src="/icons/VWCE.png" alt="VWCE (Vanguard)" loading="lazy" decoding="async"/>,
   vhyl:        <img src="/icons/VHYL.png" alt="VHYL (Vanguard)" loading="lazy" decoding="async"/>,
   microchip:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M7 9H4M7 12H4M7 15H4M17 9h3M17 12h3M17 15h3M9 7V4M12 7V4M15 7V4M9 17v3M12 17v3M15 17v3"/></svg>,
@@ -209,7 +210,7 @@ const DEFAULT_ASSETS = [
   { name:"Microsoft",      ticker:"MSFT", cat:"Tech",     current:118,  target:6.67,  icon:"microsoft"  },
   { name:"Coca-Cola",      ticker:"KO",   cat:"Dividend", current:239,  target:8.75,  icon:"coca_cola"  },
   { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"jnj"        },
-  { name:"S&P 500 ETF",    ticker:"SPY",  cat:"ETF",      current:434,  target:18.0,  icon:"spy"        },
+  { name:"Core S&P 500",   ticker:"CSPX", cat:"ETF",      current:434,  target:18.0,  icon:"spy"        },
   { name:"FTSE All World", ticker:"VWCE", cat:"ETF",      current:367,  target:15.0,  icon:"vwce"       },
   { name:"Hi Div ETF",     ticker:"VHYL", cat:"ETF",      current:249,  target:12.0,  icon:"vhyl"       },
 ];
@@ -227,6 +228,7 @@ const DEFAULT_STATE = {
   },
   dcaSchedule: [],
   dcaAutoAppliedIds: [],
+  cash: { available: 0, committed: 0, buffer: 0 },
   lastBackupAt: null,
   live: {
     enabled: false,
@@ -251,6 +253,19 @@ function sanitizeIncome(v) {
     asOf: typeof v.asOf === "string" ? v.asOf : null,
   };
 }
+
+// Uninvested money sitting in the broker account (Trade Republic's "Available" balance).
+// `committed` is the slice already earmarked for savings-plan orders that haven't executed
+// yet, so it must not be double-spent by a lump-sum deployment plan.
+function sanitizeCash(v) {
+  if (!v || typeof v !== "object") return { available: 0, committed: 0, buffer: 0 };
+  return {
+    available: sanitizeNum(v.available, 0, 10_000_000, 0),
+    committed: sanitizeNum(v.committed, 0, 10_000_000, 0),
+    buffer: sanitizeNum(v.buffer, 0, 10_000_000, 0),
+  };
+}
+
 
 // ─── STORAGE (versioned) ──────────────────────────────────────
 function loadState() {
@@ -300,6 +315,7 @@ function loadState() {
       income: sanitizeIncome(p?.income),
       dcaSchedule: sanitizeDcaSchedule(p?.dcaSchedule),
       dcaAutoAppliedIds: Array.isArray(p?.dcaAutoAppliedIds) ? p.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
+      cash: sanitizeCash(p?.cash),
       lastBackupAt: typeof p?.lastBackupAt === "string" ? p.lastBackupAt : null,
     };
   } catch { return null; }
@@ -507,6 +523,17 @@ function App() {
     return (state.dca / income) * 100;
   }, [state.income, state.dca]);
 
+  // Portfolio-wide unrealized P&L, from cost basis rather than a live-tracking baseline.
+  const unrealized = useMemo(() => {
+    const basis = state.assets.reduce((s, a) => s + (a.costBasis != null ? a.costBasis : a.current), 0);
+    if (basis <= 0) return null;
+    const abs = total - basis;
+    return { basis, abs, pct: (abs / basis) * 100 };
+  }, [state.assets, total]);
+
+  const cashFree = useMemo(() => freeCash(state.cash), [state.cash]);
+  const netWorth = total + (state.cash?.available || 0);
+
   // Auto-apply a scheduled DCA change once, the first time its effective month arrives.
   // After that, state.dca is yours to edit manually until the *next* schedule entry
   // becomes due — it no longer gets silently overwritten on every render.
@@ -648,6 +675,10 @@ function App() {
       ...s,
       income: sanitizeIncome({ ...(s.income || {}), ...patch, asOf: new Date().toISOString() }),
     }));
+  }, []);
+
+  const updateCash = useCallback((patch) => {
+    setState(s => ({ ...s, cash: sanitizeCash({ ...(s.cash || {}), ...patch }) }));
   }, []);
 
   const addDcaScheduleEntry = useCallback((entry) => {
@@ -909,6 +940,41 @@ function App() {
     showToast(`Month ${state.history.length + 1} locked — portfolio updated!`);
   }, [projection, state.assets, state.history.length, total, showToast, liveModel]);
 
+  // Apply a lump-sum cash deployment: grow each position's value and cost basis by the
+  // amount bought, grow holdings where we know a unit price, and draw the total down
+  // from the available cash balance.
+  const doDeployCash = useCallback((buys) => {
+    if (!buys?.length) return;
+    const spent = buys.reduce((s, b) => s + b.buy, 0);
+    setState(s => {
+      const assets = s.assets.map(a => {
+        const b = buys.find(x => x.ticker === a.ticker);
+        if (!b) return a;
+        const quoteRow = liveModel?.rows?.find(r => r.ticker === a.ticker);
+        const price = a.holdings > 0 && quoteRow?.quotePrice > 0 ? quoteRow.quotePrice : null;
+        const costBasis = Math.round(((a.costBasis ?? a.current) + b.buy) * 100) / 100;
+        const current = Math.round((a.current + b.buy) * 100) / 100;
+        if (price) {
+          return { ...a, holdings: Math.round((a.holdings + b.buy / price) * 1e8) / 1e8, current, costBasis };
+        }
+        return { ...a, current, costBasis };
+      });
+      const cash = sanitizeCash({
+        ...(s.cash || {}),
+        available: Math.max(0, (s.cash?.available || 0) - spent),
+      });
+      const snap = {
+        label: `Cash deployment`,
+        assets: s.assets.map(a => ({ ...a })),
+        total: s.assets.reduce((sum, a) => sum + a.current, 0),
+        buys,
+        completedAt: new Date().toISOString(),
+        note: `Lump-sum deployment of ${CURRENCY_SYMBOL}${spent} from idle cash.`,
+      };
+      return { ...s, assets, cash, history: [...s.history, snap] };
+    });
+  }, [liveModel]);
+
   const hardReset = useCallback(() => {
     setState({ ...DEFAULT_STATE, assets: DEFAULT_ASSETS.map(a => ({ ...a })) });
     setConfirmReset(false);
@@ -970,6 +1036,7 @@ function App() {
           income: sanitizeIncome(parsed?.income),
           dcaSchedule: sanitizeDcaSchedule(parsed?.dcaSchedule),
           dcaAutoAppliedIds: Array.isArray(parsed?.dcaAutoAppliedIds) ? parsed.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
+          cash: sanitizeCash(parsed?.cash),
           lastBackupAt: new Date().toISOString(),
           assets,
         });
@@ -1017,7 +1084,10 @@ function App() {
               </div>
               <h1 className="hdr-title">Portfolio Roadmap</h1>
               <div className="hdr-sub-row">
-                <span className="hdr-sub">{state.assets.length} assets · Buy-only · <PlatformBadge/></span>
+                <span className="hdr-sub">
+                  {state.assets.length} assets · Buy-only · <PlatformBadge/>
+                  {netWorth > total && <> · Net <strong className="mono">{cy}{Math.round(netWorth).toLocaleString()}</strong></>}
+                </span>
                 <span className="hdr-sep">·</span>
                 <button className="dca-pill" onClick={() => setDcaPickerOpen(true)} title={savingsRatePct != null ? `${savingsRatePct.toFixed(1)}% of net income — click to edit` : "Open DCA editor"}>
                   <Icon name="zap" style={{ width:12, height:12 }}/>
@@ -1059,7 +1129,14 @@ function App() {
           return (
             <div className={`kpi-grid ${loaded ? "in" : ""}`} role="region" aria-label="Portfolio summary">
               {[
-                { l:"Portfolio",          v:`${cy}${Math.round(total).toLocaleString()}`,                  s:"Current value",   c:"var(--accent-blue)",   icon:"wallet"   },
+                {
+                  l:"Portfolio",
+                  v:`${cy}${Math.round(total).toLocaleString()}`,
+                  s: unrealized
+                    ? `${unrealized.abs >= 0 ? "+" : "−"}${cy}${Math.abs(Math.round(unrealized.abs)).toLocaleString()} (${unrealized.pct >= 0 ? "+" : ""}${unrealized.pct.toFixed(1)}%) since buy`
+                    : "Current value",
+                  c:"var(--accent-blue)", icon:"wallet",
+                },
                 {
                   l:"Monthly DCA",
                   v:`${cy}${state.dca}`,
@@ -1154,6 +1231,8 @@ function App() {
               maxDrift={projMaxDrift}
               aligned={projAligned}
               months={state.projectionMonths}
+              cashFree={cashFree}
+              onDeployCash={doDeployCash}
             />
           )}
           {displayedTab === 2 && (
@@ -1196,6 +1275,7 @@ function App() {
           onToggleAlerts={(enabled) => setState(s => ({ ...s, alerts: { ...s.alerts, enabled } }))}
           brokerImportLog={state.brokerImportLog}
           onUpdateIncome={updateIncome}
+          onUpdateCash={updateCash}
           onAddScheduleEntry={addDcaScheduleEntry}
           onRemoveScheduleEntry={removeDcaScheduleEntry}
           onApplyScheduledDca={applyScheduledDca}
@@ -1468,7 +1548,14 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
                   <div className="d-cat">{a.cat}</div>
                 </div>
               </div>
-              <div className="d-val mono">{cy}{Math.round(a.current).toLocaleString()}</div>
+              <div className="d-val-cell">
+                <div className="d-val mono">{cy}{Math.round(a.current).toLocaleString()}</div>
+                {a.sinceBuyPct != null && (
+                  <div className="d-sincebuy mono" style={{ color: a.sinceBuyPct >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                    {a.sinceBuyPct >= 0 ? "▲" : "▼"} {Math.abs(a.sinceBuyPct).toFixed(2)}%
+                  </div>
+                )}
+              </div>
               <div className="d-bar-area" aria-hidden="true">
                 <div className="d-bar-mid"/>
                 <div className={`d-bar ${neg ? "d-bar-neg" : "d-bar-pos"}`}
@@ -1546,7 +1633,83 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
 }
 
 // ─── PLAN TAB (month stepper + N-month outlook) ────────────────
-function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast, avgDrift, maxDrift, aligned, months }) {
+// One-off lump-sum deployment of idle cash, as opposed to the recurring monthly DCA.
+// Uses the same gap-weighted allocator, so a big deposit lands on whatever is most
+// under-weight rather than being spread evenly.
+function DeployCashPanel({ assets, total, cashFree, cy, onDeploy, showToast }) {
+  const [budget, setBudget] = useState(() => Math.floor(cashFree));
+  useEffect(() => { setBudget(Math.floor(cashFree)); }, [cashFree]);
+
+  const amount = sanitizeNum(budget, 0, Math.floor(cashFree), 0);
+  const buys = useMemo(() => allocate(assets, total, amount), [assets, total, amount]);
+  const spent = buys.reduce((s, b) => s + b.buy, 0);
+
+  if (cashFree < 1) {
+    return (
+      <div className="deploy-panel">
+        <div className="deploy-head">
+          <div>
+            <div className="deploy-title">Deploy Idle Cash</div>
+            <div className="deploy-sub">No free cash right now. Set your balance in Settings → Cashflow → Cash Balance.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="deploy-panel">
+      <div className="deploy-head">
+        <div>
+          <div className="deploy-title">
+            <Icon name="wallet" style={{ width:15, height:15, color:"var(--accent-green)" }}/>
+            Deploy Idle Cash
+          </div>
+          <div className="deploy-sub">{cy}{cashFree.toFixed(2)} free to invest — allocated to your most under-weight positions first.</div>
+        </div>
+        <div className="editor-inp-wrap">
+          <span className="editor-sym">{cy}</span>
+          <input className="editor-inp mono" type="number" min="0" max={Math.floor(cashFree)} step="10"
+            value={budget}
+            onChange={e => setBudget(e.target.value)}
+            style={{ width:90 }} aria-label="Amount to deploy"/>
+        </div>
+      </div>
+
+      {buys.length === 0 ? (
+        <div className="deploy-empty">Everything is at or above target — nothing to buy with a lump sum right now.</div>
+      ) : (
+        <>
+          <div className="deploy-list">
+            {buys.map(b => {
+              const c = CAT_COLORS[b.cat] || "#6366f1";
+              const pct = amount > 0 ? (b.buy / amount) * 100 : 0;
+              return (
+                <div key={b.ticker} className="deploy-row">
+                  <div className="d-icon sm" style={{ background:`${c}18`, color:c, flexShrink:0 }}><Icon name={b.icon}/></div>
+                  <div className="deploy-row-info">
+                    <span className="deploy-row-ticker">{b.ticker}</span>
+                    <span className="deploy-row-meta">{b.pct.toFixed(1)}% → {b.target.toFixed(1)}% target</span>
+                  </div>
+                  <div className="deploy-row-bar"><div className="deploy-row-bar-f" style={{ width:`${pct}%`, background:c }}/></div>
+                  <div className="deploy-row-amt mono">{cy}{b.buy}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="deploy-foot">
+            <span className="deploy-total mono">{cy}{spent} of {cy}{Math.floor(cashFree)} deployed</span>
+            <button className="btn-primary sm" onClick={() => { onDeploy(buys); showToast(`Deployed ${cy}${spent} across ${buys.length} positions`); }}>
+              <Icon name="check" style={{ width:13, height:13 }}/>Mark as Bought
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast, avgDrift, maxDrift, aligned, months, cashFree, onDeployCash }) {
   const [monthIndex, setMonthIndex] = useState(0);
   const lastIndex = projection.steps.length - 1;
   const clamped = Math.min(monthIndex, Math.max(0, lastIndex));
@@ -1556,6 +1719,14 @@ function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast,
 
   return (
     <>
+      <DeployCashPanel
+        assets={assets}
+        total={total}
+        cashFree={cashFree}
+        cy={cy}
+        onDeploy={onDeployCash}
+        showToast={showToast}
+      />
       <div className="plan-stepper">
         <button className="btn-ghost sm" onClick={() => setMonthIndex(i => Math.max(0, i - 1))} disabled={clamped === 0} aria-label="Previous month">
           <Icon name="arrows" style={{ width:13, height:13, transform:"scaleX(-1)" }}/>
@@ -1973,7 +2144,7 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onUpdateCash, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
@@ -2168,6 +2339,7 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdatePro
             state={state}
             cy={CURRENCY_SYMBOL}
             onUpdateIncome={onUpdateIncome}
+            onUpdateCash={onUpdateCash}
             onUpdateDca={onUpdateDca}
             onAddScheduleEntry={onAddScheduleEntry}
             onRemoveScheduleEntry={onRemoveScheduleEntry}
@@ -2362,15 +2534,21 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdatePro
 }
 
 // ─── CASHFLOW SECTION ─────────────────────────────────────────
-function CashflowSection({ state, cy, onUpdateIncome, onUpdateDca, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, showToast }) {
+function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDca, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, showToast }) {
   const [incomeDraft, setIncomeDraft] = useState(String(state.income?.monthlyNet || ""));
   const [incomeLabel, setIncomeLabel] = useState(state.income?.label || "");
+  const [cashDraft, setCashDraft] = useState(String(state.cash?.available || ""));
+  const [committedDraft, setCommittedDraft] = useState(String(state.cash?.committed || ""));
+  const [bufferDraft, setBufferDraft] = useState(String(state.cash?.buffer || ""));
   const [newAmount, setNewAmount] = useState("");
   const [newDate, setNewDate] = useState(addMonths(currentMonthYM(), 1));
   const [newNote, setNewNote] = useState("");
 
   useEffect(() => { setIncomeDraft(String(state.income?.monthlyNet || "")); }, [state.income?.monthlyNet]);
   useEffect(() => { setIncomeLabel(state.income?.label || ""); }, [state.income?.label]);
+  useEffect(() => { setCashDraft(String(state.cash?.available || "")); }, [state.cash?.available]);
+  useEffect(() => { setCommittedDraft(String(state.cash?.committed || "")); }, [state.cash?.committed]);
+  useEffect(() => { setBufferDraft(String(state.cash?.buffer || "")); }, [state.cash?.buffer]);
 
   const income = state.income?.monthlyNet || 0;
   const schedule = state.dcaSchedule || [];
@@ -2397,6 +2575,15 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateDca, onAddSchedule
     const n = sanitizeNum(incomeDraft, 0, 1_000_000, 0);
     onUpdateIncome({ monthlyNet: n, label: incomeLabel });
     showToast("Income updated");
+  };
+
+  const saveCash = () => {
+    onUpdateCash({
+      available: sanitizeNum(cashDraft, 0, 10_000_000, 0),
+      committed: sanitizeNum(committedDraft, 0, 10_000_000, 0),
+      buffer: sanitizeNum(bufferDraft, 0, 10_000_000, 0),
+    });
+    showToast("Cash balance updated");
   };
 
   const submitNewEntry = () => {
@@ -2448,6 +2635,55 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateDca, onAddSchedule
               </SettingRow>
             </>
           )}
+        </div>
+      </div>
+
+      <div className="settings-group" style={{ marginTop:20 }}>
+        <div className="settings-group-label">Cash Balance</div>
+        <div className="settings-group-desc">Uninvested cash sitting in your broker account. The Plan tab uses the free portion to build a lump-sum deployment plan.</div>
+        <div className="settings-card">
+          <SettingRow title="Available" desc="Your broker's uninvested cash balance.">
+            <div className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" min="0" max="10000000" step="10"
+                value={cashDraft}
+                onChange={e => setCashDraft(e.target.value)}
+                onBlur={saveCash}
+                onKeyDown={e => { if (e.key === "Enter") { saveCash(); e.target.blur(); } }}
+                style={{ width: 100 }} aria-label="Available cash"/>
+            </div>
+          </SettingRow>
+          <SettingDivider/>
+          <SettingRow title="Committed" desc="Already earmarked for savings-plan orders that haven't executed yet.">
+            <div className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" min="0" max="10000000" step="10"
+                value={committedDraft}
+                onChange={e => setCommittedDraft(e.target.value)}
+                onBlur={saveCash}
+                onKeyDown={e => { if (e.key === "Enter") { saveCash(); e.target.blur(); } }}
+                style={{ width: 100 }} aria-label="Committed cash"/>
+            </div>
+          </SettingRow>
+          <SettingDivider/>
+          <SettingRow title="Keep as buffer" desc="Cash you never want deployed. Excluded from any buy plan.">
+            <div className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" min="0" max="10000000" step="10"
+                value={bufferDraft}
+                onChange={e => setBufferDraft(e.target.value)}
+                onBlur={saveCash}
+                onKeyDown={e => { if (e.key === "Enter") { saveCash(); e.target.blur(); } }}
+                style={{ width: 100 }} aria-label="Cash buffer"/>
+            </div>
+          </SettingRow>
+          <SettingDivider/>
+          <SettingRow title="Free to deploy" desc="Available − committed − buffer">
+            <div className={`target-sum-pill ${freeCash(state.cash) > 0 ? "ok" : "err"}`}>
+              <Icon name="wallet" style={{ width:13, height:13 }}/>
+              {cy}{freeCash(state.cash).toFixed(2)}
+            </div>
+          </SettingRow>
         </div>
       </div>
 

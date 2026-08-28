@@ -2,8 +2,22 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
-  enrich, allocate, runProjection,
+  enrich, allocate, runProjection, freeCash,
 } from "./engine";
+
+describe("freeCash", () => {
+  it("subtracts committed orders and buffer from available", () => {
+    expect(freeCash({ available: 523.3, committed: 130, buffer: 0 })).toBeCloseTo(393.3, 5);
+    expect(freeCash({ available: 523.3, committed: 130, buffer: 200 })).toBeCloseTo(193.3, 5);
+  });
+  it("never goes negative", () => {
+    expect(freeCash({ available: 100, committed: 200, buffer: 50 })).toBe(0);
+  });
+  it("treats missing/garbage input as zero", () => {
+    expect(freeCash(undefined)).toBe(0);
+    expect(freeCash({ available: "abc" })).toBe(0);
+  });
+});
 
 describe("sanitizeNum", () => {
   it("clamps within range", () => {
@@ -93,6 +107,21 @@ describe("enrich", () => {
     const [row] = enrich([{ ticker: "BTC", current: 0, target: 50 }], 0);
     expect(row.pct).toBe(0);
     expect(Number.isFinite(row.gap)).toBe(true);
+  });
+  it("computes since-buy return from cost basis", () => {
+    const [row] = enrich([{ ticker: "NVDA", current: 150, costBasis: 100, target: 5 }], 150);
+    expect(row.sinceBuyPct).toBeCloseTo(50, 5);
+    expect(row.sinceBuyAbs).toBeCloseTo(50, 5);
+  });
+  it("reports a loss as a negative since-buy return", () => {
+    const [row] = enrich([{ ticker: "BTC", current: 90, costBasis: 100, target: 7 }], 90);
+    expect(row.sinceBuyPct).toBeCloseTo(-10, 5);
+    expect(row.sinceBuyAbs).toBeCloseTo(-10, 5);
+  });
+  it("leaves since-buy null when there is no cost basis", () => {
+    const [row] = enrich([{ ticker: "X", current: 100, target: 10 }], 100);
+    expect(row.sinceBuyPct).toBeNull();
+    expect(row.sinceBuyAbs).toBeNull();
   });
 });
 
