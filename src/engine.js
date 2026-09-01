@@ -80,25 +80,58 @@ export function enrich(list, total) {
   });
 }
 
+// Split a budget across holdings in proportion to their target weight. Used when there
+// are no gaps left to close, so the money lands without skewing the allocation.
+// Always spends the budget exactly (whole euros).
+function splitByTarget(items, budget) {
+  if (budget <= 0 || !items.length) return [];
+  const targetSum = items.reduce((s, i) => s + i.target, 0);
+  const weights = targetSum > 0
+    ? items.map(i => i.target / targetSum)
+    : items.map(() => 1 / items.length);
+
+  const out = items.map((i, idx) => ({ ...i, buy: Math.floor(weights[idx] * budget) }));
+  let rem = budget - out.reduce((s, o) => s + o.buy, 0);
+  // Hand the rounding remainder to the largest weights, one euro at a time.
+  const order = out.map((_, idx) => idx).sort((a, b) => weights[b] - weights[a]);
+  for (let k = 0; rem > 0; k = (k + 1) % order.length) { out[order[k]].buy += 1; rem -= 1; }
+  return out.filter(o => o.buy > 0);
+}
+
 export function allocate(portfolio, total, budget) {
   if (budget <= 0) return [];
   const items     = enrich(portfolio, total);
   const under     = items.filter(i => i.gap > 0).sort((a, b) => b.gap - a.gap);
   const totalGap  = under.reduce((s, i) => s + i.gap, 0);
-  if (totalGap <= 0 || under.length === 0) {
-    const each = Math.floor(budget / items.length);
-    const rem  = budget - each * items.length;
-    return items.map((i, idx) => ({ ...i, buy: each + (idx === 0 ? rem : 0) })).filter(i => i.buy > 0);
+
+  // Everything already at or above target — top up by target weight.
+  if (totalGap <= 0 || under.length === 0) return splitByTarget(items, budget);
+
+  // Budget can't close every gap: weight by gap size. This is the normal monthly case.
+  if (budget <= totalGap) {
+    let rem = budget;
+    const buys = [];
+    for (const item of under) {
+      let alloc = Math.round((item.gap / totalGap) * budget);
+      alloc = Math.min(alloc, rem);
+      if (alloc > 0) { buys.push({ ...item, buy: alloc }); rem -= alloc; }
+    }
+    if (rem > 0 && buys.length > 0) buys[0].buy += rem;
+    return buys;
   }
-  let rem = budget;
-  const buys = [];
-  for (const item of under) {
-    let alloc = Math.round((item.gap / totalGap) * budget);
-    alloc = Math.min(alloc, rem);
-    if (alloc > 0) { buys.push({ ...item, buy: alloc }); rem -= alloc; }
+
+  // Budget exceeds every gap (a big lump sum). Close each gap exactly, then spread the
+  // surplus by target weight. Distributing the surplus gap-proportionally instead would
+  // overshoot whichever holding happened to be furthest behind and leave the portfolio
+  // more skewed than before the deposit.
+  const buys = under.map(i => ({ ...i, buy: Math.floor(i.gap) }));
+  const surplus = budget - buys.reduce((s, b) => s + b.buy, 0);
+  for (const extra of splitByTarget(items, surplus)) {
+    const hit = buys.find(b => b.ticker === extra.ticker);
+    if (hit) hit.buy += extra.buy;
+    else buys.push(extra);
   }
-  if (rem > 0 && buys.length > 0) buys[0].buy += rem;
-  return buys;
+  return buys.filter(b => b.buy > 0).sort((a, b) => b.buy - a.buy);
 }
 
 export function runProjection(assets, total, dca, months) {

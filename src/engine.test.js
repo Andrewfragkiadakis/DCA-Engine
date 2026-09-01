@@ -155,6 +155,53 @@ describe("allocate (gap-weighted DCA)", () => {
     const spent = buys.reduce((s, b) => s + b.buy, 0);
     expect(spent).toBe(100);
   });
+  it("splits by target weight (not evenly) when nothing is under target", () => {
+    const balanced = [
+      { ticker: "BIG",   current: 80, target: 80 },
+      { ticker: "SMALL", current: 20, target: 20 },
+    ];
+    const buys = allocate(balanced, 100, 100);
+    expect(buys.find(b => b.ticker === "BIG").buy).toBe(80);
+    expect(buys.find(b => b.ticker === "SMALL").buy).toBe(20);
+  });
+});
+
+describe("allocate with a lump sum larger than every gap", () => {
+  // Nearly balanced portfolio: total gap is tiny relative to the deposit.
+  const port = [
+    { ticker: "A", current: 340, target: 33.34 },
+    { ticker: "B", current: 330, target: 33.33 },
+    { ticker: "C", current: 330, target: 33.33 },
+  ];
+  const total = 1000;
+
+  it("spends the whole budget", () => {
+    const buys = allocate(port, total, 500);
+    expect(buys.reduce((s, b) => s + b.buy, 0)).toBe(500);
+  });
+
+  it("does not overshoot — a big deposit leaves drift no worse than before", () => {
+    const before = Math.max(...enrich(port, total).map(a => Math.abs(a.drift)));
+    const buys = allocate(port, total, 500);
+    const after = port.map(a => {
+      const b = buys.find(x => x.ticker === a.ticker);
+      return b ? { ...a, current: a.current + b.buy } : { ...a };
+    });
+    const afterTotal = after.reduce((s, a) => s + a.current, 0);
+    const maxAfter = Math.max(...enrich(after, afterTotal).map(a => Math.abs(a.drift)));
+    expect(maxAfter).toBeLessThanOrEqual(before + 0.01);
+  });
+
+  it("still gap-weights when the budget is smaller than the total gap", () => {
+    const skewed = [
+      { ticker: "LOW",  current: 0,   target: 50 },
+      { ticker: "HIGH", current: 100, target: 50 },
+    ];
+    const buys = allocate(skewed, 100, 20);
+    expect(buys).toHaveLength(1);
+    expect(buys[0].ticker).toBe("LOW");
+    expect(buys[0].buy).toBe(20);
+  });
 });
 
 describe("runProjection", () => {

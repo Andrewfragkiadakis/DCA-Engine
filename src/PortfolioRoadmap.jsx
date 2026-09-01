@@ -1,6 +1,8 @@
 // Portfolio Roadmap — personal DCA rebalancing engine for a single Trade Republic account (EUR).
 
 import { useState, useEffect, useMemo, useCallback, useRef, Component } from "react";
+import { Icon as IconifyIcon } from "@iconify/react";
+import { BRAND_ICONS } from "./brandIcons";
 import { fetchLiveQuotes, fetchFxRates, buildLiveModel, pushLocalSnapshot, persistSnapshotRemote } from "./services/marketData";
 import { importBrokerCsv, importTradeRepublicPdf } from "./services/brokerImport";
 import {
@@ -41,18 +43,37 @@ const OFFICIAL_TICKER_ICONS = {
   VWCE: "vwce",
   VHYL: "vhyl",
 };
+// ─── TICKER ICONS ─────────────────────────────────────────────
+// Brand marks come from Iconify data bundled at build time (see scripts/gen-icons.cjs).
+// Holdings with no brand mark in the wild (ETFs, J&J) get a designed lettermark rather
+// than a binary image — that removes the whole class of "icon silently fails to load"
+// bugs we had with the PNGs, and keeps every asset icon crisp at any size.
+function Brand({ icon, color }) {
+  return <IconifyIcon icon={icon} color={color} width="100%" height="100%" aria-hidden="true"/>;
+}
+
+// Keep these to 2-3 glyphs: the icon box is ~20px, so four characters turn to mush.
+function LetterMark({ text, color }) {
+  const size = text.length >= 3 ? "8.5px" : "11px";
+  return (
+    <span className="lettermark" style={{ color, fontSize: size }} aria-hidden="true">
+      {text}
+    </span>
+  );
+}
+
 // ─── SVG ICON LIBRARY ─────────────────────────────────────────
 const Icons = {
-  bitcoin:     <img src="/icons/btc.svg" alt="Bitcoin" loading="lazy" decoding="async"/>,
-  ethereum:    <img src="/icons/eth.svg" alt="Ethereum" loading="lazy" decoding="async"/>,
-  nvidia:      <img src="/icons/nvda.svg" alt="NVIDIA" loading="lazy" decoding="async"/>,
-  apple:       <img src="/icons/aapl.svg" alt="Apple" loading="lazy" decoding="async"/>,
-  microsoft:   <img src="/icons/msft.svg" alt="Microsoft" loading="lazy" decoding="async"/>,
-  coca_cola:   <img src="/icons/ko.svg" alt="Coca-Cola" loading="lazy" decoding="async"/>,
-  jnj:         <img src="/icons/jnj.png" alt="Johnson &amp; Johnson" loading="lazy" decoding="async"/>,
-  spy:         <img src="/icons/sp500.png" alt="S&amp;P 500" loading="lazy" decoding="async"/>,
-  vwce:        <img src="/icons/VWCE.png" alt="VWCE (Vanguard)" loading="lazy" decoding="async"/>,
-  vhyl:        <img src="/icons/VHYL.png" alt="VHYL (Vanguard)" loading="lazy" decoding="async"/>,
+  bitcoin:     <Brand icon={BRAND_ICONS.bitcoin}   color="#F7931A"/>,
+  ethereum:    <Brand icon={BRAND_ICONS.ethereum}  color="#8A92B2"/>,
+  nvidia:      <Brand icon={BRAND_ICONS.nvidia}    color="#76B900"/>,
+  apple:       <Brand icon={BRAND_ICONS.apple}     color="#F5F5F7"/>,
+  microsoft:   <Brand icon={BRAND_ICONS.microsoft} color="#00A4EF"/>,
+  coca_cola:   <Brand icon={BRAND_ICONS.cocacola}  color="#F40009"/>,
+  jnj:         <LetterMark text="J&J" color="#FF5470"/>,
+  spy:         <LetterMark text="S&P" color="#5AA9FF"/>,
+  vwce:        <LetterMark text="VW"  color="#FF7A6B"/>,
+  vhyl:        <LetterMark text="VH"  color="#4ADE80"/>,
   microchip:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="7" width="10" height="10" rx="1"/><path d="M7 9H4M7 12H4M7 15H4M17 9h3M17 12h3M17 15h3M9 7V4M12 7V4M15 7V4M9 17v3M12 17v3M15 17v3"/></svg>,
   circleDot:   <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3.5" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/></svg>,
   plus:        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>,
@@ -1637,10 +1658,14 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
 // Uses the same gap-weighted allocator, so a big deposit lands on whatever is most
 // under-weight rather than being spread evenly.
 function DeployCashPanel({ assets, total, cashFree, cy, onDeploy, showToast }) {
-  const [budget, setBudget] = useState(() => Math.floor(cashFree));
-  useEffect(() => { setBudget(Math.floor(cashFree)); }, [cashFree]);
+  // Default to every euro of free cash and re-track it whenever the balance changes, so
+  // the panel always opens on "deploy everything" without being capped there — you can
+  // type any amount, including more than the recorded balance.
+  const [budget, setBudget] = useState(() => Math.round(cashFree));
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { if (!touched) setBudget(Math.round(cashFree)); }, [cashFree, touched]);
 
-  const amount = sanitizeNum(budget, 0, Math.floor(cashFree), 0);
+  const amount = sanitizeNum(budget, 0, 10_000_000, 0);
   const buys = useMemo(() => allocate(assets, total, amount), [assets, total, amount]);
   const spent = buys.reduce((s, b) => s + b.buy, 0);
 
@@ -1669,10 +1694,10 @@ function DeployCashPanel({ assets, total, cashFree, cy, onDeploy, showToast }) {
         </div>
         <div className="editor-inp-wrap">
           <span className="editor-sym">{cy}</span>
-          <input className="editor-inp mono" type="number" min="0" max={Math.floor(cashFree)} step="10"
+          <input className="editor-inp mono" type="number" min="0" step="10"
             value={budget}
-            onChange={e => setBudget(e.target.value)}
-            style={{ width:90 }} aria-label="Amount to deploy"/>
+            onChange={e => { setTouched(true); setBudget(e.target.value); }}
+            style={{ width:96 }} aria-label="Amount to deploy"/>
         </div>
       </div>
 
@@ -1698,7 +1723,10 @@ function DeployCashPanel({ assets, total, cashFree, cy, onDeploy, showToast }) {
             })}
           </div>
           <div className="deploy-foot">
-            <span className="deploy-total mono">{cy}{spent} of {cy}{Math.floor(cashFree)} deployed</span>
+            <span className="deploy-total mono">
+              {cy}{spent} allocated
+              {touched && Math.round(cashFree) !== amount && <> · {cy}{Math.round(cashFree)} free</>}
+            </span>
             <button className="btn-primary sm" onClick={() => { onDeploy(buys); showToast(`Deployed ${cy}${spent} across ${buys.length} positions`); }}>
               <Icon name="check" style={{ width:13, height:13 }}/>Mark as Bought
             </button>

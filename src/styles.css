@@ -63,6 +63,12 @@
 .svg-icon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1; }
 .svg-icon svg { width:100%; height:100%; display:block; }
 .svg-icon img { width:100%; height:100%; display:block; object-fit:contain; transform:scale(1.08); filter:saturate(1.2) contrast(1.08); }
+/* Designed fallback for holdings with no brand mark (ETFs, J&J). */
+.lettermark { display:flex; align-items:center; justify-content:center; width:100%; height:100%;
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; font-weight:800;
+  letter-spacing:-.4px; line-height:1; text-align:center; white-space:nowrap;
+  text-shadow:0 0 10px currentColor; }
+.svg-icon svg { width:100%; height:100%; display:block; }
 .d-icon .svg-icon { width:20px; height:20px; }
 .d-icon.sm .svg-icon { width:18px; height:18px; }
 .buy-ico .svg-icon { width:22px; height:22px; }

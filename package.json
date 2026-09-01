@@ -10,12 +10,14 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@iconify/react": "^6.0.2",
     "pdfjs-dist": "^5.5.207",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@iconify-json/simple-icons": "^1.2.94",
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",

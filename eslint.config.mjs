@@ -34,6 +34,15 @@ export default [
   },
 
   {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "commonjs",
+      globals: { ...globals.node },
+    },
+  },
+
+  {
     files: ["api/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,

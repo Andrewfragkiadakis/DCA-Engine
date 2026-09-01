@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { getBaseUrl, cookieString } = require("./_lib");
+const { getBaseUrl, cookieString, renderErrorPage } = require("./_lib");
 
 module.exports = async function handler(req, res) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -13,11 +13,18 @@ module.exports = async function handler(req, res) {
   ].filter(Boolean);
 
   if (missing.length) {
-    res.statusCode = 500;
-    res.end(
-      `Google sign-in is not fully configured. Missing environment variable(s): ${missing.join(", ")}.\n` +
-      `Add them in Vercel → Project → Settings → Environment Variables (Production), then redeploy.`
-    );
+    renderErrorPage(res, {
+      status: 500,
+      badge: "Setup incomplete",
+      title: "Sign-in isn't configured yet",
+      message: `The server is missing ${missing.length === 1 ? "an environment variable" : "some environment variables"} needed for Google sign-in.`,
+      steps: [
+        `Open <b>Vercel → your project → Settings → Environment Variables</b>.`,
+        `Add ${missing.map(m => `<code>${m}</code>`).join(", ")} for the <b>Production</b> environment.`,
+        `Redeploy — Vercel does not apply new variables to an existing build.`,
+      ],
+      retry: false,
+    });
     return;
   }
 
