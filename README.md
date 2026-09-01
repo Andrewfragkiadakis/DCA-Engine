@@ -28,6 +28,7 @@ This is a private, single-user app — it is not indexed by search engines and i
 - **Live market proxy (serverless)** — quotes fetched through `/api/market/*` so API keys never reach the browser
 - **Provider routing by asset class** — equities/ETF via Twelve Data → Finnhub → Polygon, crypto via CoinGecko → CoinMarketCap → Binance, with correct per-symbol currency conversion (EUR, USD, GBp all handled)
 - **Trade Republic import** — CSV and PDF (securities + crypto statements) import with holdings/ISIN-aware merging
+- **Analytics tab** — portfolio value against money actually invested, month by month, plus separate crypto and non-crypto views
 - **Weekly auto-backup** — downloads a JSON snapshot automatically so a cleared browser never means total data loss
 - **Google sign-in** — single-user allowlist via OAuth2, no shared password
 - **Installable PWA** — real service worker, works offline after first load
@@ -67,10 +68,21 @@ Sign-in flow: `/api/auth/login` → Google consent screen → `/api/auth/callbac
 | Styling | Plain CSS (`src/styles.css`) |
 | Engine | Pure functions in `src/engine.js`, unit-tested with Vitest |
 | Storage | `localStorage` (schema v4) + optional Supabase snapshots |
+| Charts | Hand-rolled SVG — no chart library |
 | Auth | Google OAuth2 + signed session cookie, enforced in `middleware.js` (Edge) |
 | API Proxy | Vercel Serverless Functions (`/api/market/*`, `/api/auth/*`) |
 | Hosting | Vercel |
 | CI | GitHub Actions — lint, test, build on every push |
+
+Full detail — every library, command, env var, and a dated changelog — is in
+**[docs/STACK.md](docs/STACK.md)**.
+
+## Docs
+
+| | |
+|---|---|
+| [docs/STACK.md](docs/STACK.md) | Complete tech stack, architecture notes, env vars, changelog |
+| [docs/research/](docs/research/) | Dated research and legal notes (tax treatment, instrument availability, portfolio structure) behind decisions in this project |
 
 ## Project Structure
 
