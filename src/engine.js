@@ -65,6 +65,15 @@ export function freeCash(cash) {
   return Math.max(0, available - committed - buffer);
 }
 
+// DCA derived from income (e.g. "10% of net income"). Whole euros — savings plans are
+// set in round amounts, and a cent-precise figure would be false precision.
+export function dcaFromIncome(monthlyNet, pctOfIncome) {
+  const income = sanitizeNum(monthlyNet, 0, 1_000_000, 0);
+  const pct = sanitizeNum(pctOfIncome, 0, 100, 0);
+  if (income <= 0 || pct <= 0) return 0;
+  return Math.round((income * pct) / 100);
+}
+
 export function enrich(list, total) {
   return list.map(a => {
     const pct   = total > 0 ? (a.current / total) * 100 : 0;

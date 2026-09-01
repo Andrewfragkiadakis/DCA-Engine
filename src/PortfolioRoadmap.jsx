@@ -8,7 +8,7 @@ import { importBrokerCsv, importTradeRepublicPdf } from "./services/brokerImport
 import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   currentMonthYM, activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
-  enrich, allocate, runProjection, freeCash,
+  enrich, allocate, runProjection, freeCash, dcaFromIncome,
 } from "./engine";
 import "./styles.css";
 
@@ -249,6 +249,7 @@ const DEFAULT_STATE = {
   },
   dcaSchedule: [],
   dcaAutoAppliedIds: [],
+  dcaRule: { enabled: false, pctOfIncome: 10, appliedFor: "" },
   cash: { available: 0, committed: 0, buffer: 0 },
   lastBackupAt: null,
   live: {
@@ -260,7 +261,7 @@ const DEFAULT_STATE = {
   },
   alerts: {
     enabled: true,
-    driftThreshold: 2,
+    driftThreshold: 5,
   },
   priceSnapshots: [],
   brokerImportLog: [],
@@ -272,6 +273,18 @@ function sanitizeIncome(v) {
     monthlyNet: sanitizeNum(v.monthlyNet, 0, 1_000_000, 0),
     label: typeof v.label === "string" ? v.label.slice(0, 60) : "",
     asOf: typeof v.asOf === "string" ? v.asOf : null,
+  };
+}
+
+// Ties the monthly contribution to income, e.g. "always invest 10% of net pay".
+// appliedFor records the income/pct combination already pushed into state.dca, so the
+// rule fires once per change instead of fighting every manual edit.
+function sanitizeDcaRule(v) {
+  if (!v || typeof v !== "object") return { enabled: false, pctOfIncome: 10, appliedFor: "" };
+  return {
+    enabled: !!v.enabled,
+    pctOfIncome: sanitizeNum(v.pctOfIncome, 0, 100, 10),
+    appliedFor: typeof v.appliedFor === "string" ? v.appliedFor.slice(0, 32) : "",
   };
 }
 
@@ -337,6 +350,7 @@ function loadState() {
       dcaSchedule: sanitizeDcaSchedule(p?.dcaSchedule),
       dcaAutoAppliedIds: Array.isArray(p?.dcaAutoAppliedIds) ? p.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
       cash: sanitizeCash(p?.cash),
+      dcaRule: sanitizeDcaRule(p?.dcaRule),
       lastBackupAt: typeof p?.lastBackupAt === "string" ? p.lastBackupAt : null,
     };
   } catch { return null; }
@@ -574,6 +588,24 @@ function App() {
     }));
   }, [state.dcaSchedule, state.dcaAutoAppliedIds]);
 
+  // Keep DCA tied to income when the rule is on. Fires once per income/percentage
+  // change, so a deliberate manual override survives until one of those inputs moves.
+  useEffect(() => {
+    const rule = state.dcaRule;
+    if (!rule?.enabled) return;
+    const income = state.income?.monthlyNet || 0;
+    if (income <= 0) return;
+    const signature = `${income}:${rule.pctOfIncome}`;
+    if (rule.appliedFor === signature) return;
+    const derived = dcaFromIncome(income, rule.pctOfIncome);
+    if (derived <= 0) return;
+    setState(s => ({
+      ...s,
+      dca: derived,
+      dcaRule: sanitizeDcaRule({ ...(s.dcaRule || {}), appliedFor: signature }),
+    }));
+  }, [state.dcaRule, state.income]);
+
   const driftAlerts = useMemo(() => {
     if (!state.alerts.enabled) return [];
     const threshold = sanitizeNum(state.alerts.driftThreshold, 0.5, 10, 2);
@@ -700,6 +732,10 @@ function App() {
 
   const updateCash = useCallback((patch) => {
     setState(s => ({ ...s, cash: sanitizeCash({ ...(s.cash || {}), ...patch }) }));
+  }, []);
+
+  const updateDcaRule = useCallback((patch) => {
+    setState(s => ({ ...s, dcaRule: sanitizeDcaRule({ ...(s.dcaRule || {}), ...patch }) }));
   }, []);
 
   const addDcaScheduleEntry = useCallback((entry) => {
@@ -1058,6 +1094,7 @@ function App() {
           dcaSchedule: sanitizeDcaSchedule(parsed?.dcaSchedule),
           dcaAutoAppliedIds: Array.isArray(parsed?.dcaAutoAppliedIds) ? parsed.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
           cash: sanitizeCash(parsed?.cash),
+          dcaRule: sanitizeDcaRule(parsed?.dcaRule),
           lastBackupAt: new Date().toISOString(),
           assets,
         });
@@ -1297,6 +1334,7 @@ function App() {
           brokerImportLog={state.brokerImportLog}
           onUpdateIncome={updateIncome}
           onUpdateCash={updateCash}
+          onUpdateDcaRule={updateDcaRule}
           onAddScheduleEntry={addDcaScheduleEntry}
           onRemoveScheduleEntry={removeDcaScheduleEntry}
           onApplyScheduledDca={applyScheduledDca}
@@ -2172,7 +2210,7 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onUpdateCash, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onUpdateCash, onUpdateDcaRule, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
@@ -2368,6 +2406,7 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdatePro
             cy={CURRENCY_SYMBOL}
             onUpdateIncome={onUpdateIncome}
             onUpdateCash={onUpdateCash}
+            onUpdateDcaRule={onUpdateDcaRule}
             onUpdateDca={onUpdateDca}
             onAddScheduleEntry={onAddScheduleEntry}
             onRemoveScheduleEntry={onRemoveScheduleEntry}
@@ -2562,12 +2601,13 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdatePro
 }
 
 // ─── CASHFLOW SECTION ─────────────────────────────────────────
-function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDca, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, showToast }) {
+function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDcaRule, onUpdateDca, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, showToast }) {
   const [incomeDraft, setIncomeDraft] = useState(String(state.income?.monthlyNet || ""));
   const [incomeLabel, setIncomeLabel] = useState(state.income?.label || "");
   const [cashDraft, setCashDraft] = useState(String(state.cash?.available || ""));
   const [committedDraft, setCommittedDraft] = useState(String(state.cash?.committed || ""));
   const [bufferDraft, setBufferDraft] = useState(String(state.cash?.buffer || ""));
+  const [pctDraft, setPctDraft] = useState(String(state.dcaRule?.pctOfIncome ?? 10));
   const [newAmount, setNewAmount] = useState("");
   const [newDate, setNewDate] = useState(addMonths(currentMonthYM(), 1));
   const [newNote, setNewNote] = useState("");
@@ -2577,6 +2617,7 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDca,
   useEffect(() => { setCashDraft(String(state.cash?.available || "")); }, [state.cash?.available]);
   useEffect(() => { setCommittedDraft(String(state.cash?.committed || "")); }, [state.cash?.committed]);
   useEffect(() => { setBufferDraft(String(state.cash?.buffer || "")); }, [state.cash?.buffer]);
+  useEffect(() => { setPctDraft(String(state.dcaRule?.pctOfIncome ?? 10)); }, [state.dcaRule?.pctOfIncome]);
 
   const income = state.income?.monthlyNet || 0;
   const schedule = state.dcaSchedule || [];
@@ -2663,6 +2704,31 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDca,
               </SettingRow>
             </>
           )}
+        </div>
+      </div>
+
+      <div className="settings-group" style={{ marginTop:20 }}>
+        <div className="settings-group-label">Contribution Rule</div>
+        <div className="settings-group-desc">Tie your monthly DCA to income instead of a fixed number. When your pay changes, the contribution follows.</div>
+        <div className="settings-card">
+          <SettingRow title="Derive DCA from income" desc="Recalculates whenever your income or this percentage changes. Manual edits still stick until then.">
+            <button className={`seg-btn ${state.dcaRule?.enabled ? "active" : ""}`}
+              onClick={() => onUpdateDcaRule({ enabled: !state.dcaRule?.enabled, appliedFor: "" })}>
+              <Icon name="zap" style={{ width:12, height:12 }}/>{state.dcaRule?.enabled ? "On" : "Off"}
+            </button>
+          </SettingRow>
+          <SettingDivider/>
+          <SettingRow title="Share of net income" desc={income > 0 ? `${pctDraft || 0}% of ${cy}${income} = ${cy}${dcaFromIncome(income, pctDraft)}/mo` : "Set your monthly net income above first."}>
+            <div className="editor-inp-wrap">
+              <input className="editor-inp mono" type="number" min="0" max="100" step="1"
+                value={pctDraft}
+                onChange={e => setPctDraft(e.target.value)}
+                onBlur={() => onUpdateDcaRule({ pctOfIncome: sanitizeNum(pctDraft, 0, 100, 10), appliedFor: "" })}
+                onKeyDown={e => { if (e.key === "Enter") { onUpdateDcaRule({ pctOfIncome: sanitizeNum(pctDraft, 0, 100, 10), appliedFor: "" }); e.target.blur(); } }}
+                style={{ width: 64 }} aria-label="Percent of net income"/>
+              <span className="editor-sym">%</span>
+            </div>
+          </SettingRow>
         </div>
       </div>
 

@@ -2,8 +2,28 @@ import { describe, it, expect } from "vitest";
 import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
-  enrich, allocate, runProjection, freeCash,
+  enrich, allocate, runProjection, freeCash, dcaFromIncome,
 } from "./engine";
+
+describe("dcaFromIncome", () => {
+  it("takes a percentage of net income, rounded to whole euros", () => {
+    expect(dcaFromIncome(2600, 10)).toBe(260);
+    expect(dcaFromIncome(2600, 15)).toBe(390);
+    expect(dcaFromIncome(1300, 10)).toBe(130);
+  });
+  it("rounds rather than truncating", () => {
+    expect(dcaFromIncome(2555, 10)).toBe(256);
+  });
+  it("returns zero when income or percentage is missing", () => {
+    expect(dcaFromIncome(0, 10)).toBe(0);
+    expect(dcaFromIncome(2600, 0)).toBe(0);
+    expect(dcaFromIncome(undefined, 10)).toBe(0);
+  });
+  it("clamps a nonsense percentage instead of exploding", () => {
+    expect(dcaFromIncome(2600, 500)).toBe(2600);
+    expect(dcaFromIncome(2600, -5)).toBe(0);
+  });
+});
 
 describe("freeCash", () => {
   it("subtracts committed orders and buffer from available", () => {
