@@ -12,22 +12,22 @@ changelog at the bottom.
 
 | Layer | Choice | Version |
 |---|---|---|
-| UI framework | React (no framework on top) | 18.3.1 |
-| Build tool | Vite | 7.3.1 |
+| UI framework | React (no framework on top) | 19.2 |
+| Build tool | Vite (Rolldown) | 8.2 |
 | Language | JavaScript (ESM, JSX). No TypeScript. | — |
 | Styling | Plain hand-written CSS, one file | — |
 | State | React `useState` + `localStorage`. No state library. | — |
-| Icons | Iconify React + simple-icons, **bundled offline** | 6.0.2 / 1.2.94 |
+| Icons | Iconify React + simple-icons, **bundled offline** | 6.0 / 1.2 |
 | Charts | Hand-rolled SVG. **No chart library.** | — |
-| PDF parsing | pdf.js (`pdfjs-dist`), lazy-loaded | 5.5.207 |
-| PWA / offline | vite-plugin-pwa (Workbox `generateSW`) | 1.3.0 |
-| Tests | Vitest | 4.1.11 |
-| Lint | ESLint 10 flat config + react-hooks plugin | 10.9.0 / 7.1.1 |
+| PDF parsing | pdf.js (`pdfjs-dist`), lazy-loaded | 6.3 |
+| PWA / offline | vite-plugin-pwa (Workbox `generateSW`) | 1.3 |
+| Tests | Vitest | 4.1 |
+| Lint | ESLint 10 flat config + react-hooks plugin | 10.9 / 7.1 |
 | Backend | Vercel Serverless Functions (Node, CommonJS) | — |
 | Auth gate | Vercel Edge Middleware (ESM, Web Crypto) | — |
 | Auth | Google OAuth2 authorization code + HMAC-signed cookie | — |
 | Hosting | Vercel (`main` auto-deploys) | — |
-| CI | GitHub Actions — lint, test, build on every push | — |
+| CI | GitHub Actions (Node 22) — lint, test, build on every push | — |
 
 ## Dependencies (complete)
 
@@ -116,6 +116,7 @@ Set in Vercel. None are needed for `npm run dev` except live market data.
 
 | Date | Change |
 |---|---|
+| 2026-09-01 | Stack modernised: React 19, Vite 8 (Rolldown bundler — build 1.9s to 0.6s), @vitejs/plugin-react 6 (oxc transform, no Babel), pdfjs-dist 6, ESLint 10.9.1. CI moved to Node 22 (Vite 8 requires ^20.19 or >=22.12). |
 | 2026-09-01 | Analytics tab added — hand-rolled SVG charts, no chart library. `engine.js` gains the analytics data layer. |
 | 2026-09-01 | Icons moved to Iconify with offline bundling; all binary icon assets deleted. |
 | 2026-09-01 | Auth error pages rewritten to name the actual OAuth failure cause. |

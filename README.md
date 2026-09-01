@@ -2,8 +2,8 @@
 
 > Personal Dollar-Cost Averaging rebalancing tool for a single Trade Republic account (EUR). Track real holdings, project future contributions, and rebalance with gap-weighted monthly allocation.
 
-![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)
-![Vite](https://img.shields.io/badge/Vite-7-646cff?style=flat-square&logo=vite)
+![React](https://img.shields.io/badge/React-19-61dafb?style=flat-square&logo=react)
+![Vite](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite)
 ![License: MIT](https://img.shields.io/badge/License-MIT-0ea5e9?style=flat-square)
 
 This is a private, single-user app — it is not indexed by search engines and is gated behind Google sign-in restricted to one allowed email address. See [Setup](#setup) below.
@@ -63,8 +63,8 @@ Sign-in flow: `/api/auth/login` → Google consent screen → `/api/auth/callbac
 
 | Layer | Technology |
 |-------|------------|
-| UI | React 18 |
-| Bundler | Vite 7 |
+| UI | React 19 |
+| Bundler | Vite 8 (Rolldown) |
 | Styling | Plain CSS (`src/styles.css`) |
 | Engine | Pure functions in `src/engine.js`, unit-tested with Vitest |
 | Storage | `localStorage` (schema v4) + optional Supabase snapshots |
