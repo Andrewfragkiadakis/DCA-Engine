@@ -74,6 +74,39 @@ export function dcaFromIncome(monthlyNet, pctOfIncome) {
   return Math.round((income * pct) / 100);
 }
 
+// Rolls monthly history snapshots into a value-vs-invested series for the analytics
+// charts. `filter` narrows it to a bucket (e.g. crypto only). Snapshots taken before
+// cost basis existed fall back to their value, which honestly reports zero P&L for
+// that month rather than inventing a number.
+export function buildMonthlySeries(history, currentAssets, filter = () => true) {
+  const point = (assets, label, date) => {
+    const rows = (assets || []).filter(filter);
+    if (!rows.length) return null;
+    const value = rows.reduce((s, a) => s + (a.current || 0), 0);
+    const invested = rows.reduce((s, a) => s + (a.costBasis != null ? a.costBasis : (a.current || 0)), 0);
+    return { label, date, value, invested, pnl: value - invested };
+  };
+
+  const series = (history || [])
+    .map(h => point(h.assets, h.label || "", h.completedAt || ""))
+    .filter(Boolean);
+
+  const now = point(currentAssets, "Now", new Date().toISOString());
+  if (now) series.push(now);
+  return series;
+}
+
+// Contribution per month, taken from what each locked-in month actually bought.
+export function monthlyContributions(history, filter = () => true) {
+  return (history || []).map(h => ({
+    label: h.label || "",
+    date: h.completedAt || "",
+    amount: (h.buys || [])
+      .filter(b => filter(b))
+      .reduce((s, b) => s + (b.buy || 0), 0),
+  }));
+}
+
 export function enrich(list, total) {
   return list.map(a => {
     const pct   = total > 0 ? (a.current / total) * 100 : 0;

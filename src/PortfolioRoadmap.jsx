@@ -9,6 +9,7 @@ import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   currentMonthYM, activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
   enrich, allocate, runProjection, freeCash, dcaFromIncome,
+  buildMonthlySeries, monthlyContributions,
 } from "./engine";
 import "./styles.css";
 
@@ -1108,9 +1109,10 @@ function App() {
   }, [showToast]);
 
   const tabs = [
-    { label:"Overview", icon:"barChart", short:"Overview" },
-    { label:"Plan",     icon:"calendar", short:"Plan"      },
-    { label:"History",  icon:"history",  short:"History"  },
+    { label:"Overview",  icon:"barChart", short:"Overview" },
+    { label:"Plan",      icon:"calendar", short:"Plan"     },
+    { label:"Analytics", icon:"trendUp",  short:"Stats"    },
+    { label:"History",   icon:"history",  short:"History"  },
   ];
 
   return (
@@ -1294,6 +1296,9 @@ function App() {
             />
           )}
           {displayedTab === 2 && (
+            <AnalyticsTab history={state.history} assets={state.assets} cy={cy}/>
+          )}
+          {displayedTab === 3 && (
             <HistoryTab history={state.history} cy={cy} priceSnapshots={state.priceSnapshots}/>
           )}
         </div>
@@ -1603,7 +1608,7 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
                   <Icon name={a.icon}/>
                 </div>
                 <div className="d-info">
-                  <div className="d-ticker">{a.ticker}</div>
+                  <div className="d-ticker">{a.name} <span className="d-tick-paren">({a.ticker})</span></div>
                   <div className="d-cat">{a.cat}</div>
                 </div>
               </div>
@@ -2040,6 +2045,303 @@ function HealthTab({ finalPort, finalTotal, avgDrift, maxDrift, aligned, cy, mon
         <Icon name="info" style={{ color:"var(--accent-indigo)", width:15, height:15, flexShrink:0, marginTop:1 }}/>
         <span><strong>Note:</strong> Projections assume flat asset prices. Re-run after significant market movement. Full convergence typically takes 6–12 months at current DCA rate.</span>
       </div>
+    </>
+  );
+}
+
+// ─── ANALYTICS ────────────────────────────────────────────────
+// Chart palette validated against this app's dark surface (#0a0f1a) with the dataviz
+// validator: VALUE #3987e5 sits inside the dark lightness band with >=3:1 contrast;
+// CONTEXT #9aa3b2 separates from it by ΔE 16.5 (normal vision) / 14.0 (CVD), clearing
+// the 15 floor. This is an emphasis pair — value is the subject, invested is context —
+// so both series are direct-labelled and a legend is always shown.
+const VIZ_VALUE = "#3987e5";
+const VIZ_CONTEXT = "#9aa3b2";
+
+function fmtEur(n, cy) {
+  return `${cy}${Math.round(n).toLocaleString()}`;
+}
+
+// Axis label for a series point: the snapshot's month reads better than "Month 7".
+function vizTick(p) {
+  if (!p.date) return p.label;
+  const d = new Date(p.date);
+  if (isNaN(d)) return p.label;
+  return `${d.toLocaleDateString("en-GB", { month: "short" })} '${String(d.getFullYear()).slice(2)}`;
+}
+
+// Round axis steps (1/2/2.5/5 x 10^n) so ticks read €1,500 rather than €1,478.
+function niceStep(span, target) {
+  const raw = span / Math.max(1, target);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  const norm = raw / mag;
+  const mult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return mult * mag;
+}
+
+// The chart draws in real CSS pixels: the viewBox width tracks the container, so an
+// 11px axis label is 11px in the wide hero chart and in the narrow bucket cards alike.
+// A fixed viewBox would scale text with the container and leave the small cards illegible.
+function useMeasuredWidth() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(entries => setWidth(Math.round(entries[0].contentRect.width)));
+    ro.observe(el);
+    setWidth(Math.round(el.getBoundingClientRect().width));
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+// Value-vs-invested chart. Single y-scale on purpose: both series are euros, so a
+// second axis would be a lie. The band between them is the unrealised P&L.
+function ProgressChart({ series, cy, height = 260, compact = false }) {
+  const [hover, setHover] = useState(null);
+  const [wrapRef, measured] = useMeasuredWidth();
+
+  if (!series || series.length < 2) {
+    return (
+      <div className="viz-empty">
+        Needs at least two months of history to plot. Lock in a month, or backfill past months.
+      </div>
+    );
+  }
+
+  const padL = compact ? 52 : 66;
+  const padR = compact ? 14 : 18;
+  const padT = 12;
+  const padB = 24;
+  const W = measured || (compact ? 460 : 900);
+  const H = height;
+  const innerW = Math.max(40, W - padL - padR);
+  const innerH = H - padT - padB;
+
+  const lo = Math.min(...series.flatMap(p => [p.value, p.invested]));
+  const hi = Math.max(...series.flatMap(p => [p.value, p.invested]));
+  const span = hi - lo || Math.max(1, hi * 0.1);
+  // Pad the range by a fraction of the span (so the plot fills the box), then draw grid
+  // lines only on round multiples inside it. Snapping the range itself to round numbers
+  // would leave a third of the chart empty.
+  const step = niceStep(span, compact ? 3 : 5);
+  const yMin = Math.max(0, lo - span * 0.12);
+  const yMax = hi + span * 0.12;
+
+  const x = i => padL + (series.length === 1 ? innerW / 2 : (i / (series.length - 1)) * innerW);
+  const y = v => padT + innerH - ((v - yMin) / (yMax - yMin || 1)) * innerH;
+
+  const line = key => series.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
+
+  // One quad per month rather than one blanket fill: a month that was under water stays
+  // red even if the portfolio is in profit today.
+  const bands = series.slice(0, -1).map((p, i) => {
+    const q = series[i + 1];
+    return {
+      d: `M${x(i).toFixed(1)},${y(p.value).toFixed(1)} L${x(i + 1).toFixed(1)},${y(q.value).toFixed(1)} `
+       + `L${x(i + 1).toFixed(1)},${y(q.invested).toFixed(1)} L${x(i).toFixed(1)},${y(p.invested).toFixed(1)} Z`,
+      up: (p.pnl + q.pnl) / 2 >= 0,
+    };
+  });
+
+  const last = series[series.length - 1];
+  const gaining = last.value >= last.invested;
+  const gridVals = [];
+  for (let v = Math.ceil(yMin / step) * step; v <= yMax; v += step) gridVals.push(v);
+
+  return (
+    <div className="viz-wrap" ref={wrapRef}>
+      <div className="viz-legend">
+        <span className="viz-key"><i style={{ background: VIZ_VALUE }}/>Value</span>
+        <span className="viz-key"><i style={{ background: VIZ_CONTEXT }}/>Invested</span>
+      </div>
+      <svg
+        className="viz-svg"
+        viewBox={`0 0 ${W} ${H}`}
+        width={W}
+        height={H}
+        role="img"
+        aria-label={`Portfolio value versus amount invested over ${series.length} points. Latest value ${fmtEur(last.value, cy)}, invested ${fmtEur(last.invested, cy)}.`}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const rel = ((e.clientX - r.left) / r.width) * W;
+          const i = Math.round(((rel - padL) / innerW) * (series.length - 1));
+          setHover(Math.max(0, Math.min(series.length - 1, i)));
+        }}
+      >
+        {gridVals.map((v, i) => (
+          <g key={i}>
+            <line className="viz-grid" x1={padL} x2={W - padR} y1={y(v)} y2={y(v)}/>
+            <text className="viz-axis" x={padL - 8} y={y(v) + 4} textAnchor="end">{fmtEur(v, cy)}</text>
+          </g>
+        ))}
+
+        {bands.map((b, i) => (
+          <path key={i} d={b.d} fill={b.up ? "rgba(52,211,153,.16)" : "rgba(239,68,68,.14)"} stroke="none"/>
+        ))}
+        <path d={line("invested")} fill="none" stroke={VIZ_CONTEXT} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round"/>
+        <path d={line("value")} fill="none" stroke={VIZ_VALUE} strokeWidth="2" strokeLinejoin="round"/>
+
+        {series.map((p, i) => (
+          <g key={i}>
+            <circle cx={x(i)} cy={y(p.invested)} r="4" fill={VIZ_CONTEXT} stroke="#0a0f1a" strokeWidth="2"/>
+            <circle cx={x(i)} cy={y(p.value)} r="4.5" fill={VIZ_VALUE} stroke="#0a0f1a" strokeWidth="2"/>
+          </g>
+        ))}
+
+        {hover != null && (
+          <g>
+            <line className="viz-cross" x1={x(hover)} x2={x(hover)} y1={padT} y2={padT + innerH}/>
+            <circle cx={x(hover)} cy={y(series[hover].value)} r="7" fill="none" stroke={VIZ_VALUE} strokeWidth="2"/>
+          </g>
+        )}
+
+        {series.map((p, i) => {
+          // Thin the ticks to what actually fits, so labels never collide in the
+          // narrow bucket cards. First and last always survive.
+          const room = Math.max(2, Math.floor(innerW / 66));
+          const every = Math.ceil((series.length - 1) / (room - 1));
+          const keep = i === 0 || i === series.length - 1 || (i % every === 0 && series.length - 1 - i >= every / 2);
+          if (!keep) return null;
+          return (
+            <text key={i} className="viz-axis" x={x(i)} y={H - 6} textAnchor={i === 0 ? "start" : i === series.length - 1 ? "end" : "middle"}>
+              {p.label === "Now" ? "Now" : vizTick(p)}
+            </text>
+          );
+        })}
+      </svg>
+
+      <div className="viz-readout">
+        {hover != null ? (
+          <>
+            <strong>{series[hover].label}</strong>
+            <span>Value <b style={{ color: VIZ_VALUE }}>{fmtEur(series[hover].value, cy)}</b></span>
+            <span>Invested <b style={{ color: VIZ_CONTEXT }}>{fmtEur(series[hover].invested, cy)}</b></span>
+            <span>P&amp;L <b style={{ color: series[hover].pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+              {series[hover].pnl >= 0 ? "+" : "−"}{fmtEur(Math.abs(series[hover].pnl), cy)}
+            </b></span>
+          </>
+        ) : (
+          <>
+            <strong>Latest</strong>
+            <span>Value <b style={{ color: VIZ_VALUE }}>{fmtEur(last.value, cy)}</b></span>
+            <span>Invested <b style={{ color: VIZ_CONTEXT }}>{fmtEur(last.invested, cy)}</b></span>
+            <span>P&amp;L <b style={{ color: gaining ? "var(--accent-green)" : "var(--accent-red)" }}>
+              {gaining ? "+" : "−"}{fmtEur(Math.abs(last.pnl), cy)}
+            </b></span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BucketCard({ title, subtitle, series, cy }) {
+  const last = series[series.length - 1];
+  const pct = last && last.invested > 0 ? (last.pnl / last.invested) * 100 : null;
+  return (
+    <div className="viz-card">
+      <div className="viz-card-head">
+        <div>
+          <div className="viz-card-title">{title}</div>
+          <div className="viz-card-sub">{subtitle}</div>
+        </div>
+        {last && (
+          <div className="viz-card-stat">
+            <div className="viz-card-val mono">{fmtEur(last.value, cy)}</div>
+            {pct != null && (
+              <div className="viz-card-pnl mono" style={{ color: pct >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                {pct >= 0 ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <ProgressChart series={series} cy={cy} height={190} compact/>
+    </div>
+  );
+}
+
+function AnalyticsTab({ history, assets, cy }) {
+  const isCrypto = a => a.cat === "Crypto";
+  const all    = useMemo(() => buildMonthlySeries(history, assets), [history, assets]);
+  const crypto = useMemo(() => buildMonthlySeries(history, assets, isCrypto), [history, assets]);
+  const rest   = useMemo(() => buildMonthlySeries(history, assets, a => !isCrypto(a)), [history, assets]);
+  const contribs = useMemo(() => monthlyContributions(history), [history]);
+
+  const last = all[all.length - 1];
+  const pnlPct = last && last.invested > 0 ? (last.pnl / last.invested) * 100 : null;
+  const totalContrib = contribs.reduce((s, c) => s + c.amount, 0);
+
+  if (!all.length) {
+    return (
+      <>
+        <Sh title="Analytics" subtitle="Progress over time"/>
+        <div className="empty-state" style={{ marginTop:40 }}>
+          <Icon name="barChart" style={{ width:40, height:40, color:"var(--text3)", marginBottom:12 }}/>
+          <p>No data to chart yet.<br/>Lock in a month on the Plan tab, or backfill past months via Settings → Data → Restore Backup.</p>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Sh title="Analytics" subtitle="Value against money actually invested, month by month"/>
+
+      <div className="viz-kpis">
+        <div className="viz-kpi">
+          <span>Invested</span>
+          <strong className="mono">{fmtEur(last.invested, cy)}</strong>
+        </div>
+        <div className="viz-kpi">
+          <span>Value</span>
+          <strong className="mono" style={{ color: VIZ_VALUE }}>{fmtEur(last.value, cy)}</strong>
+        </div>
+        <div className="viz-kpi">
+          <span>Unrealised P&amp;L</span>
+          <strong className="mono" style={{ color: last.pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+            {last.pnl >= 0 ? "+" : "−"}{fmtEur(Math.abs(last.pnl), cy)}{pnlPct != null ? ` (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)` : ""}
+          </strong>
+        </div>
+        <div className="viz-kpi">
+          <span>Months tracked</span>
+          <strong className="mono">{history.length}</strong>
+        </div>
+      </div>
+
+      <div className="viz-main">
+        <ProgressChart series={all} cy={cy}/>
+      </div>
+
+      <div className="viz-bucket-grid">
+        <BucketCard title="Crypto" subtitle="BTC and ETH" series={crypto} cy={cy}/>
+        <BucketCard title="Everything else" subtitle="ETFs, stocks" series={rest} cy={cy}/>
+      </div>
+
+      {contribs.length > 0 && (
+        <>
+          <Sh title="Month by month" subtitle={`${fmtEur(totalContrib, cy)} contributed across ${contribs.length} locked-in month${contribs.length === 1 ? "" : "s"}`}/>
+          <div className="viz-table" role="table">
+            <div className="viz-tr viz-th" role="row">
+              <span>Month</span><span>Contributed</span><span>Value</span><span>Invested</span><span>P&amp;L</span>
+            </div>
+            {all.slice(0, contribs.length).map((p, i) => (
+              <div className="viz-tr" role="row" key={i}>
+                <span>{vizTick(p)} <span className="viz-tr-sub">{p.label}</span></span>
+                <span className="mono">{contribs[i] ? fmtEur(contribs[i].amount, cy) : "—"}</span>
+                <span className="mono">{fmtEur(p.value, cy)}</span>
+                <span className="mono">{fmtEur(p.invested, cy)}</span>
+                <span className="mono" style={{ color: p.pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+                  {p.pnl >= 0 ? "+" : "−"}{fmtEur(Math.abs(p.pnl), cy)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }

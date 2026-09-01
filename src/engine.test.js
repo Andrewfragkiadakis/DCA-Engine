@@ -3,6 +3,7 @@ import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
   enrich, allocate, runProjection, freeCash, dcaFromIncome,
+  buildMonthlySeries, monthlyContributions,
 } from "./engine";
 
 describe("dcaFromIncome", () => {
@@ -242,5 +243,75 @@ describe("runProjection", () => {
     const { finalPort } = runProjection(assets, 100, 50, 12);
     const maxDrift = Math.max(...finalPort.map(a => Math.abs(a.drift)));
     expect(maxDrift).toBeLessThan(5);
+  });
+});
+
+describe("buildMonthlySeries", () => {
+  const history = [
+    { label: "Jun 2026", completedAt: "2026-06-30", assets: [
+      { ticker: "BTC", cat: "Crypto", current: 100, costBasis: 90 },
+      { ticker: "CSPX", cat: "ETF", current: 400, costBasis: 380 },
+    ]},
+    { label: "Jul 2026", completedAt: "2026-07-31", assets: [
+      { ticker: "BTC", cat: "Crypto", current: 130, costBasis: 120 },
+      { ticker: "CSPX", cat: "ETF", current: 460, costBasis: 440 },
+    ]},
+  ];
+  const current = [
+    { ticker: "BTC", cat: "Crypto", current: 150, costBasis: 140 },
+    { ticker: "CSPX", cat: "ETF", current: 500, costBasis: 470 },
+  ];
+
+  it("emits one point per snapshot plus the live portfolio", () => {
+    const s = buildMonthlySeries(history, current);
+    expect(s.map(p => p.label)).toEqual(["Jun 2026", "Jul 2026", "Now"]);
+  });
+  it("sums value, invested and P&L across the snapshot", () => {
+    const [first] = buildMonthlySeries(history, current);
+    expect(first.value).toBe(500);
+    expect(first.invested).toBe(470);
+    expect(first.pnl).toBe(30);
+  });
+  it("narrows to a bucket when given a filter", () => {
+    const s = buildMonthlySeries(history, current, a => a.cat === "Crypto");
+    expect(s.map(p => p.value)).toEqual([100, 130, 150]);
+    expect(s.map(p => p.invested)).toEqual([90, 120, 140]);
+  });
+  it("falls back to value when a snapshot predates cost basis (zero P&L, not a fake one)", () => {
+    const legacy = [{ label: "Old", assets: [{ ticker: "BTC", current: 200 }] }];
+    const [p] = buildMonthlySeries(legacy, []);
+    expect(p.invested).toBe(200);
+    expect(p.pnl).toBe(0);
+  });
+  it("skips points where the filter matches nothing", () => {
+    const s = buildMonthlySeries(history, current, a => a.ticker === "NOPE");
+    expect(s).toEqual([]);
+  });
+  it("survives missing history and missing assets", () => {
+    expect(buildMonthlySeries(undefined, undefined)).toEqual([]);
+    expect(buildMonthlySeries(null, [])).toEqual([]);
+  });
+});
+
+describe("monthlyContributions", () => {
+  const history = [
+    { label: "Jun 2026", completedAt: "2026-06-30", buys: [
+      { ticker: "BTC", cat: "Crypto", buy: 30 },
+      { ticker: "CSPX", cat: "ETF", buy: 100 },
+    ]},
+    { label: "Jul 2026", completedAt: "2026-07-31", buys: [{ ticker: "CSPX", cat: "ETF", buy: 260 }] },
+  ];
+
+  it("totals what each locked-in month bought", () => {
+    expect(monthlyContributions(history).map(c => c.amount)).toEqual([130, 260]);
+  });
+  it("filters to a bucket", () => {
+    expect(monthlyContributions(history, b => b.cat === "Crypto").map(c => c.amount)).toEqual([30, 0]);
+  });
+  it("reports zero for a month with no buys recorded", () => {
+    expect(monthlyContributions([{ label: "Aug 2026" }])).toEqual([{ label: "Aug 2026", date: "", amount: 0 }]);
+  });
+  it("survives missing history", () => {
+    expect(monthlyContributions(undefined)).toEqual([]);
   });
 });
