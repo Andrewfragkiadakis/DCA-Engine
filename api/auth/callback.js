@@ -17,9 +17,21 @@ module.exports = async function handler(req, res) {
     const sessionSecret = process.env.SESSION_SECRET;
     const allowedEmail = String(process.env.ALLOWED_EMAIL || "").toLowerCase().trim();
 
-    if (!clientId || !clientSecret || !sessionSecret || !allowedEmail) {
+    // Name exactly which variables are missing — a generic "not configured" message
+    // is painful to debug. Names only, never values.
+    const missing = [
+      !clientId && "GOOGLE_CLIENT_ID",
+      !clientSecret && "GOOGLE_CLIENT_SECRET",
+      !sessionSecret && "SESSION_SECRET",
+      !allowedEmail && "ALLOWED_EMAIL",
+    ].filter(Boolean);
+
+    if (missing.length) {
       res.statusCode = 500;
-      res.end("Google SSO is not fully configured. See README for required environment variables.");
+      res.end(
+        `Google sign-in is not fully configured. Missing environment variable(s): ${missing.join(", ")}.\n` +
+        `Add them in Vercel → Project → Settings → Environment Variables (Production), then redeploy.`
+      );
       return;
     }
 
