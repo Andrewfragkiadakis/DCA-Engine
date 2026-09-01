@@ -148,6 +148,8 @@
 /* ── ICON BTN ── */
 .icon-btn { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:9px; cursor:pointer; color:var(--text2); display:flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; text-decoration:none; }
 .icon-btn:hover { background:var(--surface2); color:var(--text); }
+.icon-btn.sm { padding:6px; border-radius:8px; }
+.icon-btn.sm:hover { color:var(--accent-red); border-color:rgba(239,68,68,.25); }
 .icon-btn.danger-hover:hover { background:rgba(239,68,68,.1); color:var(--accent-red); border-color:rgba(239,68,68,.25); }
 
 /* ── KPI ── */
@@ -240,7 +242,55 @@
 .viz-cross { stroke:var(--border2); stroke-width:1; stroke-dasharray:3 3; }
 .viz-axis { fill:var(--text4); font-size:11px; font-family:'JetBrains Mono',monospace; }
 
-.viz-legend { display:flex; gap:16px; margin-bottom:6px; }
+.viz-legend { display:flex; gap:16px; margin-bottom:6px; flex-wrap:wrap; }
+/* The swatch shape mirrors the stroke pattern — solid bar, dash, dot — so the three
+   series stay tellable apart in greyscale, in print, and for colour-blind readers. */
+.viz-sw-solid { width:11px; height:11px; border-radius:3px; }
+.viz-sw-dash  { width:14px; height:3px;  border-radius:2px; }
+.viz-sw-dot   { width:7px;  height:7px;  border-radius:50%; }
+
+.viz-main-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+.viz-main-title { font-size:14.5px; font-weight:700; color:var(--text); }
+.viz-bench-ctl { display:flex; align-items:center; gap:8px; }
+.viz-bench-sel { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:5px 9px; font-size:12.5px; font-family:inherit; font-weight:600; cursor:pointer; }
+.viz-bench-sel:focus-visible { outline:2px solid var(--accent-indigo); outline-offset:1px; }
+
+.viz-verdict { display:flex; align-items:flex-start; gap:9px; margin-top:10px; padding:10px 13px; border-radius:11px; font-size:12.5px; line-height:1.5; color:var(--text2); }
+.viz-verdict.ahead  { background:rgba(52,211,153,.08); border:1px solid rgba(52,211,153,.22); }
+.viz-verdict.behind { background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.22); }
+.viz-verdict strong { color:var(--text); }
+.viz-note-row { margin-top:9px; font-size:12px; line-height:1.55; color:var(--text3); }
+.viz-note { color:var(--accent-red); font-weight:600; }
+
+/* ── Dividend card ── */
+.viz-bucket-grid.one { grid-template-columns:1fr; }
+.div-card { padding-bottom:14px; }
+.div-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:4px 0 12px; }
+.div-kpi { display:flex; flex-direction:column; gap:3px; padding:9px 11px; border-radius:11px; background:var(--surface2); border:1px solid var(--border); }
+.div-kpi span { font-size:10px; font-weight:700; letter-spacing:.7px; text-transform:uppercase; color:var(--text4); }
+.div-kpi strong { font-size:16px; font-weight:700; }
+.div-rows { display:flex; flex-direction:column; gap:4px; }
+.div-row { display:grid; grid-template-columns:1fr 64px 74px; align-items:center; gap:10px; padding:7px 11px; border-radius:9px; background:var(--surface2); border:1px solid var(--border); font-size:12.5px; }
+.div-row-name { display:flex; align-items:center; gap:6px; min-width:0; font-weight:600; color:var(--text); }
+.div-row-y, .div-row-amt { text-align:right; color:var(--text2); }
+.div-row-amt { font-weight:700; color:var(--text); }
+.div-tag { padding:1px 5px; border-radius:5px; font-size:9.5px; font-weight:800; letter-spacing:.5px; cursor:help; flex-shrink:0; }
+.div-tag-ok { background:rgba(52,211,153,.14); color:var(--accent-green); }
+.div-tag-wh { background:rgba(239,68,68,.14); color:var(--accent-red); }
+.div-foot { margin-top:10px; font-size:11.5px; line-height:1.55; color:var(--text4); }
+.div-edit { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:8px 18px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+.div-edit-row { display:grid; grid-template-columns:52px 96px 1fr; align-items:center; gap:9px; font-size:12.5px; }
+.div-edit-t { font-weight:700; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text2); }
+.div-edit-inp { display:flex; align-items:center; gap:5px; min-width:0; }
+.div-edit-inp .editor-inp { flex:1; width:100%; min-width:0; text-align:right; }
+.div-edit-pct { font-size:11px; color:var(--text4); flex-shrink:0; }
+.div-edit-ucits { display:flex; align-items:center; gap:5px; font-size:10.5px; font-weight:700; color:var(--text4); cursor:pointer; justify-self:start; }
+
+@media (max-width:600px) {
+  .div-kpis { grid-template-columns:repeat(2,1fr); }
+  .div-row { grid-template-columns:1fr 52px 62px; }
+}
+
 .viz-key { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--text2); }
 .viz-key i { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
 
@@ -276,6 +326,9 @@
 
 /* full name + ticker in the drift list */
 .d-tick-paren { color:var(--text3); font-weight:600; }
+.d-src { display:inline-block; margin-left:7px; padding:1px 6px; border-radius:5px; font-size:9.5px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; vertical-align:1px; cursor:help; }
+.d-src-off { background:rgba(239,68,68,.14); color:var(--accent-red); }
+.d-src-manual { background:rgba(245,158,11,.14); color:var(--accent-amber); }
 
 /* ── DEPLOY IDLE CASH ── */
 .deploy-panel { border:1px solid rgba(16,185,129,.25); background:linear-gradient(180deg, rgba(16,185,129,.07), rgba(16,185,129,.02)); border-radius:16px; padding:16px 18px; margin-bottom:22px; }
@@ -296,6 +349,50 @@
 @media (max-width:600px) {
   .deploy-row { grid-template-columns:26px 1fr 64px; }
   .deploy-row-bar { display:none; }
+}
+
+/* ── BACKFILL PAST MONTHS ── */
+.bf-intro { font-size:12.5px; line-height:1.55; color:var(--text2); margin-bottom:14px; }
+.bf-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.bf-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.bf-field > span { font-size:10.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--text4); }
+.bf-field > span em { font-style:normal; font-weight:600; letter-spacing:0; text-transform:none; opacity:.75; }
+.bf-field .editor-inp { width:100%; }
+.bf-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:14px; }
+.bf-hint { font-size:11.5px; line-height:1.5; color:var(--text4); flex:1; min-width:200px; }
+.bf-list { display:flex; flex-direction:column; gap:5px; }
+.bf-list-row { display:grid; grid-template-columns:1fr 90px 110px 30px; align-items:center; gap:10px; padding:7px 11px; border-radius:9px; background:var(--surface2); border:1px solid var(--border); font-size:12.5px; }
+.bf-list-m { font-weight:600; color:var(--text); }
+.bf-list-v { text-align:right; font-weight:700; color:var(--text); }
+.bf-list-i { text-align:right; color:var(--text3); font-size:11.5px; }
+@media (max-width:600px) {
+  .bf-grid { grid-template-columns:1fr 1fr; }
+  .bf-list-row { grid-template-columns:1fr 76px 30px; }
+  .bf-list-i { display:none; }
+}
+
+/* ── SAVINGS PLAN SYNC ── */
+.sp-panel { border:1px solid var(--border); background:var(--surface); border-radius:16px; padding:16px 18px; margin-bottom:22px; }
+.sp-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+.sp-title { display:flex; align-items:center; gap:7px; font-size:15px; font-weight:700; color:var(--text); margin-bottom:3px; }
+.sp-sub { font-size:12.5px; color:var(--text2); line-height:1.5; max-width:62ch; }
+.sp-badge { padding:2px 7px; border-radius:6px; font-size:9.5px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; }
+.sp-ok   { background:rgba(52,211,153,.14); color:var(--accent-green); }
+.sp-warn { background:rgba(245,158,11,.16); color:var(--accent-amber); }
+.sp-none { background:var(--surface2); color:var(--text4); }
+.sp-actions { display:flex; gap:8px; flex-shrink:0; }
+.sp-rows { display:flex; flex-direction:column; gap:5px; }
+.sp-row { display:grid; grid-template-columns:60px minmax(90px,220px) 1fr 62px; align-items:center; gap:12px; padding:7px 11px; border-radius:9px; background:var(--surface2); border:1px solid var(--border); font-size:12.5px; }
+.sp-row-drop { opacity:.62; }
+.sp-row-t { font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:700; color:var(--text); }
+.sp-row-bar { height:5px; border-radius:3px; background:var(--surface); overflow:hidden; }
+.sp-row-bar-f { display:block; height:100%; border-radius:3px; background:var(--accent-indigo); }
+.sp-row-amt { text-align:right; font-weight:700; color:var(--text); font-size:13px; }
+.sp-row-delta { text-align:right; font-size:11px; font-weight:700; }
+.sp-foot { margin-top:13px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; line-height:1.55; color:var(--text2); }
+@media (max-width:600px) {
+  .sp-row { grid-template-columns:48px minmax(50px,1fr) 60px; }
+  .sp-row-delta { display:none; }
 }
 
 /* ── PLAN STEPPER ── */

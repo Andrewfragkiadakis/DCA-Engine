@@ -74,37 +74,307 @@ export function dcaFromIncome(monthlyNet, pctOfIncome) {
   return Math.round((income * pct) / 100);
 }
 
-// Rolls monthly history snapshots into a value-vs-invested series for the analytics
-// charts. `filter` narrows it to a bucket (e.g. crypto only). Snapshots taken before
-// cost basis existed fall back to their value, which honestly reports zero P&L for
-// that month rather than inventing a number.
-export function buildMonthlySeries(history, currentAssets, filter = () => true) {
-  const point = (assets, label, date) => {
-    const rows = (assets || []).filter(filter);
-    if (!rows.length) return null;
-    const value = rows.reduce((s, a) => s + (a.current || 0), 0);
-    const invested = rows.reduce((s, a) => s + (a.costBasis != null ? a.costBasis : (a.current || 0)), 0);
-    return { label, date, value, invested, pnl: value - invested };
-  };
+// ─── History shapes ──────────────────────────────────────────────────────────
+// A history entry is one of two shapes:
+//   • a locked-in snapshot — `assets: [...]` with per-asset current/costBasis
+//   • a backfilled month   — `totals: { value, invested, cryptoValue?, cryptoInvested? }`
+// Backfilled months deliberately carry no per-asset rows: reconstructing them from a
+// statement would mean inventing numbers. Anything that can't be answered from the
+// recorded totals returns null rather than a guess.
 
+export const BUCKETS = ["all", "crypto", "rest"];
+
+const inBucket = (bucket, cat) =>
+  bucket === "all" ? true : bucket === "crypto" ? cat === "Crypto" : cat !== "Crypto";
+
+function pointFromAssets(assets, bucket) {
+  const rows = (assets || []).filter(a => inBucket(bucket, a.cat));
+  if (!rows.length) return null;
+  const value = rows.reduce((s, a) => s + (a.current || 0), 0);
+  // Snapshots taken before cost basis existed fall back to their value, which honestly
+  // reports zero P&L for that month rather than inventing a number.
+  const invested = rows.reduce((s, a) => s + (a.costBasis != null ? a.costBasis : (a.current || 0)), 0);
+  return { value, invested };
+}
+
+function pointFromTotals(t, bucket) {
+  if (!t || !isFinite(t.value) || !isFinite(t.invested)) return null;
+  if (bucket === "all") return { value: t.value, invested: t.invested };
+  const cv = isFinite(t.cryptoValue) ? t.cryptoValue : null;
+  if (cv == null) return null; // no split was recorded — don't manufacture one
+  const ci = isFinite(t.cryptoInvested) ? t.cryptoInvested : cv;
+  return bucket === "crypto"
+    ? { value: cv, invested: ci }
+    : { value: t.value - cv, invested: t.invested - ci };
+}
+
+export function historyEntryPoint(entry, bucket = "all") {
+  if (!entry) return null;
+  const core = entry.totals ? pointFromTotals(entry.totals, bucket) : pointFromAssets(entry.assets, bucket);
+  if (!core) return null;
+  return {
+    label: entry.label || "",
+    date: entry.completedAt || "",
+    backfilled: !!entry.backfilled,
+    ...core,
+    pnl: core.value - core.invested,
+  };
+}
+
+// Rolls history into a value-vs-invested series for the analytics charts, with the live
+// portfolio appended as the final point.
+export function buildMonthlySeries(history, currentAssets, bucket = "all") {
   const series = (history || [])
-    .map(h => point(h.assets, h.label || "", h.completedAt || ""))
+    .map(h => historyEntryPoint(h, bucket))
     .filter(Boolean);
 
-  const now = point(currentAssets, "Now", new Date().toISOString());
-  if (now) series.push(now);
+  const now = pointFromAssets(currentAssets, bucket);
+  if (now) {
+    series.push({
+      label: "Now", date: new Date().toISOString(), backfilled: false,
+      ...now, pnl: now.value - now.invested,
+    });
+  }
   return series;
 }
 
-// Contribution per month, taken from what each locked-in month actually bought.
-export function monthlyContributions(history, filter = () => true) {
-  return (history || []).map(h => ({
-    label: h.label || "",
-    date: h.completedAt || "",
-    amount: (h.buys || [])
-      .filter(b => filter(b))
-      .reduce((s, b) => s + (b.buy || 0), 0),
-  }));
+// Contribution per month. A locked-in month reports what it actually bought; a
+// backfilled month reports the figure entered for it.
+export function monthlyContributions(history, bucket = "all") {
+  return (history || []).map(h => {
+    let amount;
+    if (h.totals) {
+      // Only the portfolio-level figure is known for a backfilled month.
+      amount = bucket === "all" && isFinite(h.contributed) ? h.contributed : null;
+    } else {
+      amount = (h.buys || [])
+        .filter(b => inBucket(bucket, b.cat))
+        .reduce((s, b) => s + (b.buy || 0), 0);
+    }
+    return { label: h.label || "", date: h.completedAt || "", amount, backfilled: !!h.backfilled };
+  });
+}
+
+// ─── Money-weighted return ───────────────────────────────────────────────────
+// Bisection on NPV rather than Newton. Newton diverges on the shape a DCA history
+// produces (many closely spaced flows, a root near zero), and a return figure that
+// occasionally comes back as NaN is worse than one that takes 200 cheap iterations.
+const MS_PER_YEAR = 365.2425 * 24 * 3600 * 1000;
+
+export function irr(flows, lo = -0.9999, hi = 10) {
+  const rows = (flows || [])
+    .filter(f => f && isFinite(f.amount) && f.amount !== 0 && f.date)
+    .map(f => ({ amount: f.amount, t: new Date(f.date).getTime() }))
+    .filter(f => !isNaN(f.t))
+    .sort((a, b) => a.t - b.t);
+  if (rows.length < 2) return null;
+  if (!rows.some(r => r.amount < 0) || !rows.some(r => r.amount > 0)) return null;
+
+  const t0 = rows[0].t;
+  const npv = r => rows.reduce((s, x) => s + x.amount / Math.pow(1 + r, (x.t - t0) / MS_PER_YEAR), 0);
+
+  let fLo = npv(lo);
+  const fHi = npv(hi);
+  if (!isFinite(fLo) || !isFinite(fHi) || fLo * fHi > 0) return null; // no root in the bracket
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const f = npv(mid);
+    if (f === 0) return mid;
+    if (fLo * f < 0) { hi = mid; } else { lo = mid; fLo = f; }
+  }
+  return (lo + hi) / 2;
+}
+
+// Annualised money-weighted return from a value/invested series. Each rise in invested
+// is a contribution on that date; the final value is the closing flow. Derived from
+// invested rather than from recorded buys so the first tracked month's existing cost
+// basis counts as capital put in, instead of appearing as free money.
+export function seriesIrr(series) {
+  if (!series || series.length < 2) return null;
+  const flows = [];
+  let prev = 0;
+  for (const p of series) {
+    const delta = p.invested - prev;
+    prev = p.invested;
+    if (delta !== 0 && p.date) flows.push({ date: p.date, amount: -delta });
+  }
+  const last = series[series.length - 1];
+  if (!last.date) return null;
+  flows.push({ date: last.date, amount: last.value });
+  return irr(flows);
+}
+
+// ─── Benchmark counterfactual ────────────────────────────────────────────────
+export function ymOf(date) {
+  const d = new Date(date);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// "What if every euro had gone into the benchmark instead." `closes` maps YYYY-MM to a
+// month-end price. A month with no price cannot buy units — it is counted as missing and
+// reported, never interpolated, because a silently interpolated price would make the
+// comparison look authoritative when it isn't.
+export function benchmarkSeries(series, closes) {
+  if (!series || series.length < 2 || !closes) return null;
+  let units = 0, prevInvested = 0, lastPx = null, missing = 0;
+  const points = series.map(p => {
+    const delta = p.invested - prevInvested;
+    prevInvested = p.invested;
+    const px = closes[ymOf(p.date)];
+    const valid = isFinite(px) && px > 0;
+    if (valid) lastPx = px;
+    if (delta > 0 && !valid) missing++;
+    if (delta > 0 && valid) units += delta / px;
+    const mark = valid ? px : lastPx;
+    return { ...p, benchmark: mark != null && units > 0 ? units * mark : null };
+  });
+  return { points, missing, complete: missing === 0 };
+}
+
+// ─── Savings plan ────────────────────────────────────────────────────────────
+// A Trade Republic savings plan executes a fixed split every month; the allocator is
+// gap-weighted and moves as the portfolio does. These two functions are the bridge:
+// propose a fixed split from today's gaps, then measure how stale it has become.
+export function savingsPlanSplit(portfolio, total, monthly) {
+  const buys = allocate(portfolio, total, monthly);
+  const rows = buys
+    .map(b => ({ ticker: b.ticker, name: b.name, cat: b.cat, icon: b.icon, amount: Math.round(b.buy) }))
+    .filter(r => r.amount >= 1)
+    .sort((a, b) => b.amount - a.amount);
+  // Rounding to whole euros can lose or gain a euro; give the difference to the largest.
+  const spent = rows.reduce((s, r) => s + r.amount, 0);
+  if (rows.length && spent !== Math.round(monthly)) rows[0].amount += Math.round(monthly) - spent;
+  return rows.filter(r => r.amount >= 1);
+}
+
+// How far a stored plan has drifted from what the allocator would set up today, as a
+// percentage of the monthly amount. Halved because every euro that should move shows up
+// twice — once as a shortfall, once as an excess.
+export function savingsPlanDrift(plan, portfolio, total, monthly) {
+  if (!Array.isArray(plan) || !plan.length || monthly <= 0) return null;
+  const fresh = savingsPlanSplit(portfolio, total, monthly);
+  const amountOf = (rows, ticker) => (rows.find(r => r.ticker === ticker)?.amount || 0);
+  const tickers = new Set([...plan.map(p => p.ticker), ...fresh.map(p => p.ticker)]);
+  let diff = 0;
+  for (const t of tickers) diff += Math.abs(amountOf(plan, t) - amountOf(fresh, t));
+  return (diff / 2 / monthly) * 100;
+}
+
+// ─── Dividend income ────────────────────────────────────────────────────────
+// US withholding is deducted at source on US-listed shares and is not recoverable.
+// EU/EEA UCITS distributions are exempt for a Greek resident, so a UCITS row keeps the
+// whole gross — see docs/research/2026-09-01-greece-tax-treatment.md.
+export const US_WITHHOLDING_PCT = 15;
+
+export function dividendIncome(assets, withholdingPct = US_WITHHOLDING_PCT) {
+  const wh = sanitizeNum(withholdingPct, 0, 100, US_WITHHOLDING_PCT);
+  const rows = (assets || [])
+    .filter(a => a && isFinite(a.yieldPct) && a.yieldPct > 0 && (a.current || 0) > 0)
+    .map(a => {
+      const gross = ((a.current || 0) * a.yieldPct) / 100;
+      const withheld = a.ucits ? 0 : (gross * wh) / 100;
+      return {
+        ticker: a.ticker, name: a.name, cat: a.cat, icon: a.icon,
+        yieldPct: a.yieldPct, ucits: !!a.ucits,
+        gross, withheld, net: gross - withheld,
+      };
+    })
+    .sort((a, b) => b.gross - a.gross);
+
+  const gross = rows.reduce((s, r) => s + r.gross, 0);
+  const withheld = rows.reduce((s, r) => s + r.withheld, 0);
+  const portfolioValue = (assets || []).reduce((s, a) => s + (a.current || 0), 0);
+  return {
+    rows, gross, withheld, net: gross - withheld,
+    yieldOnPortfolioPct: portfolioValue > 0 ? (gross / portfolioValue) * 100 : 0,
+    coveredCount: rows.length,
+    payerCount: (assets || []).filter(a => a && isFinite(a.yieldPct) && a.yieldPct > 0).length,
+  };
+}
+
+// ─── Review cadence ─────────────────────────────────────────────────────────
+export function reviewStatus(lastReviewedAt, intervalMonths = 3, now = new Date()) {
+  const months = sanitizeNum(intervalMonths, 1, 24, 3);
+  const base = lastReviewedAt ? new Date(lastReviewedAt) : null;
+  if (!base || isNaN(base)) return { state: "unset", due: null, days: null };
+  const due = new Date(base);
+  due.setMonth(due.getMonth() + months);
+  // Whole days left; goes negative the moment the due date passes.
+  const days = Math.floor((due.getTime() - now.getTime()) / 86_400_000);
+  return { state: days < 0 ? "overdue" : days <= 14 ? "soon" : "ok", due, days };
+}
+
+// ─── History sanitation ─────────────────────────────────────────────────────
+// History used to be trusted verbatim from an imported backup. Now that a backfilled
+// month is a first-class shape, a malformed entry could produce NaN in a chart, so the
+// import path validates it. Unknown per-asset fields are preserved — only the numbers
+// the charts depend on are checked.
+function finiteOrNull(v) {
+  const n = parseFloat(v);
+  return isNaN(n) || !isFinite(n) ? null : n;
+}
+
+export function sanitizeHistoryEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const completedAt = typeof entry.completedAt === "string" && !isNaN(new Date(entry.completedAt))
+    ? entry.completedAt : null;
+  if (!completedAt) return null;
+
+  const base = {
+    label: typeof entry.label === "string" ? entry.label.slice(0, 40) : "",
+    completedAt,
+    note: typeof entry.note === "string" ? entry.note.slice(0, 500) : "",
+  };
+
+  if (entry.totals && typeof entry.totals === "object") {
+    const value = finiteOrNull(entry.totals.value);
+    const invested = finiteOrNull(entry.totals.invested);
+    if (value == null || invested == null || value < 0 || invested < 0) return null;
+    const cryptoValue = finiteOrNull(entry.totals.cryptoValue);
+    const cryptoInvested = finiteOrNull(entry.totals.cryptoInvested);
+    return {
+      ...base,
+      backfilled: true,
+      contributed: Math.max(0, finiteOrNull(entry.contributed) ?? 0),
+      total: value,
+      totals: {
+        value, invested,
+        ...(cryptoValue != null && cryptoValue >= 0 && cryptoValue <= value
+          ? { cryptoValue, cryptoInvested: cryptoInvested != null && cryptoInvested >= 0 ? cryptoInvested : cryptoValue }
+          : {}),
+      },
+    };
+  }
+
+  if (!Array.isArray(entry.assets) || !entry.assets.length) return null;
+  const assets = entry.assets
+    .filter(a => a && typeof a === "object" && typeof a.ticker === "string" && finiteOrNull(a.current) != null)
+    .map(a => ({ ...a, current: finiteOrNull(a.current), costBasis: finiteOrNull(a.costBasis) }));
+  if (!assets.length) return null;
+
+  return {
+    ...base,
+    backfilled: false,
+    assets,
+    total: finiteOrNull(entry.total) ?? assets.reduce((s, a) => s + a.current, 0),
+    buys: Array.isArray(entry.buys)
+      ? entry.buys
+          .filter(b => b && typeof b.ticker === "string" && finiteOrNull(b.buy) != null)
+          .map(b => ({ ...b, buy: finiteOrNull(b.buy) }))
+      : [],
+  };
+}
+
+// Sorted oldest-first so the charts read left to right regardless of insertion order —
+// a backfilled month is added after the months that follow it.
+export function sanitizeHistory(arr, max = 240) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map(sanitizeHistoryEntry)
+    .filter(Boolean)
+    .sort((a, b) => a.completedAt.localeCompare(b.completedAt))
+    .slice(-max);
 }
 
 export function enrich(list, total) {

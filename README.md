@@ -29,6 +29,13 @@ This is a private, single-user app — it is not indexed by search engines and i
 - **Provider routing by asset class** — equities/ETF via Twelve Data → Finnhub → Polygon, crypto via CoinGecko → CoinMarketCap → Binance, with correct per-symbol currency conversion (EUR, USD, GBp all handled)
 - **Trade Republic import** — CSV and PDF (securities + crypto statements) import with holdings/ISIN-aware merging
 - **Analytics tab** — portfolio value against money actually invested, month by month, plus separate crypto and non-crypto views
+- **Benchmark counterfactual** — what the same contributions, on the same dates, would be worth in VWCE or CSPX instead
+- **Money-weighted return (IRR)** — the return figure that accounts for money added over time, not a naive since-buy percentage
+- **Savings-plan sync** — turns the gap-weighted monthly plan into a fixed per-ticker split to paste into Trade Republic, and flags when the recorded split has drifted
+- **Backfill past months** — add months from before you started tracking, straight off a monthly statement
+- **Expected dividend income** — gross, net of US withholding, and yield on portfolio, with UCITS positions correctly untaxed
+- **Quote provenance** — says plainly when a price is stale, unresolved, or a manual figure rather than a live valuation
+- **Review reminder** — the plan's quarterly cadence, tracked in the app
 - **Weekly auto-backup** — downloads a JSON snapshot automatically so a cleared browser never means total data loss
 - **Google sign-in** — single-user allowlist via OAuth2, no shared password
 - **Installable PWA** — real service worker, works offline after first load
@@ -103,6 +110,7 @@ api/
     login.js, callback.js, logout.js, _lib.js   # Google OAuth2 + session cookie
   market/
     quotes.js              # market provider proxy + TTL cache
+    history.js             # monthly closes for the Analytics benchmark line
     fx.js                  # FX conversion proxy + TTL cache
     snapshots.js           # optional Supabase persistence bridge
 public/

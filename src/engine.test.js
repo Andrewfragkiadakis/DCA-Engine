@@ -3,7 +3,11 @@ import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
   enrich, allocate, runProjection, freeCash, dcaFromIncome,
-  buildMonthlySeries, monthlyContributions,
+  buildMonthlySeries, monthlyContributions, historyEntryPoint,
+  irr, seriesIrr, benchmarkSeries, ymOf,
+  savingsPlanSplit, savingsPlanDrift,
+  dividendIncome, US_WITHHOLDING_PCT,
+  reviewStatus, sanitizeHistory, sanitizeHistoryEntry,
 } from "./engine";
 
 describe("dcaFromIncome", () => {
@@ -263,8 +267,7 @@ describe("buildMonthlySeries", () => {
   ];
 
   it("emits one point per snapshot plus the live portfolio", () => {
-    const s = buildMonthlySeries(history, current);
-    expect(s.map(p => p.label)).toEqual(["Jun 2026", "Jul 2026", "Now"]);
+    expect(buildMonthlySeries(history, current).map(p => p.label)).toEqual(["Jun 2026", "Jul 2026", "Now"]);
   });
   it("sums value, invested and P&L across the snapshot", () => {
     const [first] = buildMonthlySeries(history, current);
@@ -272,24 +275,53 @@ describe("buildMonthlySeries", () => {
     expect(first.invested).toBe(470);
     expect(first.pnl).toBe(30);
   });
-  it("narrows to a bucket when given a filter", () => {
-    const s = buildMonthlySeries(history, current, a => a.cat === "Crypto");
+  it("narrows to the crypto bucket", () => {
+    const s = buildMonthlySeries(history, current, "crypto");
     expect(s.map(p => p.value)).toEqual([100, 130, 150]);
     expect(s.map(p => p.invested)).toEqual([90, 120, 140]);
   });
+  it("narrows to everything except crypto", () => {
+    expect(buildMonthlySeries(history, current, "rest").map(p => p.value)).toEqual([400, 460, 500]);
+  });
   it("falls back to value when a snapshot predates cost basis (zero P&L, not a fake one)", () => {
-    const legacy = [{ label: "Old", assets: [{ ticker: "BTC", current: 200 }] }];
+    const legacy = [{ label: "Old", completedAt: "2026-01-31", assets: [{ ticker: "BTC", cat: "Crypto", current: 200 }] }];
     const [p] = buildMonthlySeries(legacy, []);
     expect(p.invested).toBe(200);
     expect(p.pnl).toBe(0);
   });
-  it("skips points where the filter matches nothing", () => {
-    const s = buildMonthlySeries(history, current, a => a.ticker === "NOPE");
-    expect(s).toEqual([]);
-  });
   it("survives missing history and missing assets", () => {
     expect(buildMonthlySeries(undefined, undefined)).toEqual([]);
     expect(buildMonthlySeries(null, [])).toEqual([]);
+  });
+});
+
+describe("backfilled history entries", () => {
+  const entry = {
+    label: "Mar 2026", completedAt: "2026-03-31", backfilled: true, contributed: 260,
+    totals: { value: 1000, invested: 950, cryptoValue: 180, cryptoInvested: 170 },
+  };
+
+  it("reads portfolio totals without inventing per-asset rows", () => {
+    const p = historyEntryPoint(entry);
+    expect(p).toMatchObject({ value: 1000, invested: 950, pnl: 50, backfilled: true });
+  });
+  it("splits into buckets from the recorded crypto figures", () => {
+    expect(historyEntryPoint(entry, "crypto")).toMatchObject({ value: 180, invested: 170 });
+    expect(historyEntryPoint(entry, "rest")).toMatchObject({ value: 820, invested: 780 });
+  });
+  it("returns null for a bucket when no split was recorded, rather than guessing", () => {
+    const noSplit = { ...entry, totals: { value: 1000, invested: 950 } };
+    expect(historyEntryPoint(noSplit, "all")).toMatchObject({ value: 1000 });
+    expect(historyEntryPoint(noSplit, "crypto")).toBeNull();
+    expect(historyEntryPoint(noSplit, "rest")).toBeNull();
+  });
+  it("assumes crypto invested equals crypto value when only the value is known", () => {
+    const partial = { ...entry, totals: { value: 1000, invested: 950, cryptoValue: 180 } };
+    expect(historyEntryPoint(partial, "crypto")).toMatchObject({ value: 180, invested: 180, pnl: 0 });
+  });
+  it("mixes with real snapshots in one series", () => {
+    const mixed = [entry, { label: "Apr", completedAt: "2026-04-30", assets: [{ ticker: "BTC", cat: "Crypto", current: 200, costBasis: 190 }] }];
+    expect(buildMonthlySeries(mixed, []).map(p => p.value)).toEqual([1000, 200]);
   });
 });
 
@@ -305,13 +337,228 @@ describe("monthlyContributions", () => {
   it("totals what each locked-in month bought", () => {
     expect(monthlyContributions(history).map(c => c.amount)).toEqual([130, 260]);
   });
-  it("filters to a bucket", () => {
-    expect(monthlyContributions(history, b => b.cat === "Crypto").map(c => c.amount)).toEqual([30, 0]);
+  it("splits by bucket", () => {
+    expect(monthlyContributions(history, "crypto").map(c => c.amount)).toEqual([30, 0]);
   });
   it("reports zero for a month with no buys recorded", () => {
-    expect(monthlyContributions([{ label: "Aug 2026" }])).toEqual([{ label: "Aug 2026", date: "", amount: 0 }]);
+    expect(monthlyContributions([{ label: "Aug 2026" }])[0].amount).toBe(0);
+  });
+  it("uses the entered figure for a backfilled month, and null for a bucket it cannot split", () => {
+    const back = [{ label: "Mar", completedAt: "2026-03-31", backfilled: true, contributed: 260, totals: { value: 1, invested: 1 } }];
+    expect(monthlyContributions(back)[0].amount).toBe(260);
+    expect(monthlyContributions(back, "crypto")[0].amount).toBeNull();
   });
   it("survives missing history", () => {
     expect(monthlyContributions(undefined)).toEqual([]);
+  });
+});
+
+describe("irr", () => {
+  it("solves a single-period doubling as 100%", () => {
+    // 365 calendar days against a 365.2425-day year, so the exact answer is a shade over 1.
+    const r = irr([{ date: "2025-01-01", amount: -100 }, { date: "2026-01-01", amount: 200 }]);
+    expect(r).toBeCloseTo(1, 2);
+  });
+  it("returns zero for money that did not grow", () => {
+    const r = irr([{ date: "2025-01-01", amount: -100 }, { date: "2026-01-01", amount: 100 }]);
+    expect(r).toBeCloseTo(0, 5);
+  });
+  it("handles a loss", () => {
+    const r = irr([{ date: "2025-01-01", amount: -100 }, { date: "2026-01-01", amount: 90 }]);
+    expect(r).toBeCloseTo(-0.1, 3);
+  });
+  it("annualises a sub-year holding period upward", () => {
+    const r = irr([{ date: "2026-01-01", amount: -100 }, { date: "2026-07-01", amount: 110 }]);
+    expect(r).toBeGreaterThan(0.19); // ~21% annualised, not 10%
+  });
+  it("weights later contributions less than early ones", () => {
+    // Same total in, same value out — but money that arrived late worked for less time,
+    // so the implied rate must be higher.
+    const early = irr([{ date: "2026-01-01", amount: -200 }, { date: "2027-01-01", amount: 220 }]);
+    const late = irr([
+      { date: "2026-01-01", amount: -100 },
+      { date: "2026-12-01", amount: -100 },
+      { date: "2027-01-01", amount: 220 },
+    ]);
+    expect(late).toBeGreaterThan(early);
+  });
+  it("returns null when there is nothing to solve", () => {
+    expect(irr([])).toBeNull();
+    expect(irr([{ date: "2026-01-01", amount: -100 }])).toBeNull();
+    expect(irr([{ date: "2026-01-01", amount: -100 }, { date: "2026-06-01", amount: -50 }])).toBeNull();
+  });
+  it("ignores malformed flows instead of returning NaN", () => {
+    const r = irr([
+      { date: "bogus", amount: -50 },
+      { amount: -50 },
+      { date: "2025-01-01", amount: -100 },
+      { date: "2026-01-01", amount: 200 },
+    ]);
+    expect(r).toBeCloseTo(1, 2);
+  });
+});
+
+describe("seriesIrr", () => {
+  it("derives contributions from the rise in invested", () => {
+    const series = [
+      { date: "2025-01-01", value: 100, invested: 100 },
+      { date: "2026-01-01", value: 220, invested: 200 },
+    ];
+    // 100 in at t0, 100 more at t1, worth 220 at t1.
+    const r = seriesIrr(series);
+    expect(r).toBeCloseTo(0.2, 2);
+  });
+  it("reports a negative return when value trails money in", () => {
+    const r = seriesIrr([
+      { date: "2025-01-01", value: 100, invested: 100 },
+      { date: "2026-01-01", value: 150, invested: 200 },
+    ]);
+    expect(r).toBeLessThan(0);
+  });
+  it("returns null for fewer than two points", () => {
+    expect(seriesIrr([{ date: "2026-01-01", value: 1, invested: 1 }])).toBeNull();
+    expect(seriesIrr([])).toBeNull();
+  });
+});
+
+describe("benchmarkSeries", () => {
+  const series = [
+    { date: "2026-01-31", value: 100, invested: 100 },
+    { date: "2026-02-28", value: 210, invested: 200 },
+    { date: "2026-03-31", value: 320, invested: 300 },
+  ];
+
+  it("buys benchmark units with each contribution at that month's price", () => {
+    const { points, complete } = benchmarkSeries(series, { "2026-01": 10, "2026-02": 20, "2026-03": 25 });
+    expect(complete).toBe(true);
+    expect(points[0].benchmark).toBeCloseTo(100, 6);   // 10 units at 10
+    expect(points[1].benchmark).toBeCloseTo(300, 6);   // 10 units at 20 + 5 units at 20
+    expect(points[2].benchmark).toBeCloseTo(475, 6);   // 19 units at 25
+  });
+  it("counts a missing month instead of interpolating a price", () => {
+    const { points, missing, complete } = benchmarkSeries(series, { "2026-01": 10, "2026-03": 25 });
+    expect(missing).toBe(1);
+    expect(complete).toBe(false);
+    expect(points[1].benchmark).toBeCloseTo(100, 6); // marked at the last known price, no units bought
+  });
+  it("returns null without a usable series or price map", () => {
+    expect(benchmarkSeries(series, null)).toBeNull();
+    expect(benchmarkSeries([series[0]], { "2026-01": 10 })).toBeNull();
+  });
+  it("ymOf formats and rejects", () => {
+    expect(ymOf("2026-03-31")).toBe("2026-03");
+    expect(ymOf("nope")).toBeNull();
+  });
+});
+
+describe("savingsPlanSplit / savingsPlanDrift", () => {
+  const portfolio = [
+    { ticker: "A", name: "A", cat: "ETF", current: 0, target: 50 },
+    { ticker: "B", name: "B", cat: "ETF", current: 100, target: 50 },
+  ];
+
+  it("spends the monthly amount exactly in whole euros", () => {
+    const plan = savingsPlanSplit(portfolio, 100, 260);
+    expect(plan.reduce((s, r) => s + r.amount, 0)).toBe(260);
+    expect(plan.every(r => Number.isInteger(r.amount))).toBe(true);
+  });
+  it("drops rows below one euro — a savings plan cannot hold cents", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({ ticker: `T${i}`, current: 10, target: 2.5 }));
+    const plan = savingsPlanSplit(many, 400, 20);
+    expect(plan.every(r => r.amount >= 1)).toBe(true);
+  });
+  it("reports zero drift against a freshly generated plan", () => {
+    const plan = savingsPlanSplit(portfolio, 100, 260);
+    expect(savingsPlanDrift(plan, portfolio, 100, 260)).toBeCloseTo(0, 6);
+  });
+  it("reports drift once the portfolio has moved on", () => {
+    const plan = savingsPlanSplit(portfolio, 100, 260);
+    const moved = [{ ...portfolio[0], current: 400 }, { ...portfolio[1], current: 100 }];
+    expect(savingsPlanDrift(plan, moved, 500, 260)).toBeGreaterThan(20);
+  });
+  it("returns null with no stored plan", () => {
+    expect(savingsPlanDrift([], portfolio, 100, 260)).toBeNull();
+    expect(savingsPlanDrift(null, portfolio, 100, 260)).toBeNull();
+  });
+});
+
+describe("dividendIncome", () => {
+  const assets = [
+    { ticker: "KO", cat: "Dividend", current: 1000, yieldPct: 3, ucits: false },
+    { ticker: "VHYL", cat: "ETF", current: 1000, yieldPct: 3, ucits: true },
+    { ticker: "BTC", cat: "Crypto", current: 500 },
+  ];
+
+  it("keeps the whole gross on a UCITS row and withholds on a US share", () => {
+    const { rows, gross, withheld, net } = dividendIncome(assets);
+    expect(gross).toBeCloseTo(60, 6);
+    expect(withheld).toBeCloseTo(30 * US_WITHHOLDING_PCT / 100, 6);
+    expect(net).toBeCloseTo(60 - 4.5, 6);
+    expect(rows.find(r => r.ticker === "VHYL").withheld).toBe(0);
+  });
+  it("ignores assets with no yield entered", () => {
+    expect(dividendIncome(assets).coveredCount).toBe(2);
+  });
+  it("expresses income as a yield on the whole portfolio, dilution included", () => {
+    expect(dividendIncome(assets).yieldOnPortfolioPct).toBeCloseTo((60 / 2500) * 100, 6);
+  });
+  it("returns zeroes rather than NaN for an empty portfolio", () => {
+    const d = dividendIncome([]);
+    expect(d.gross).toBe(0);
+    expect(d.yieldOnPortfolioPct).toBe(0);
+  });
+});
+
+describe("reviewStatus", () => {
+  const now = new Date("2026-09-01T12:00:00Z");
+  it("is unset before the first review", () => {
+    expect(reviewStatus(null, 3, now).state).toBe("unset");
+  });
+  it("is ok well before the due date", () => {
+    expect(reviewStatus("2026-08-01T00:00:00Z", 3, now).state).toBe("ok");
+  });
+  it("warns inside the last two weeks", () => {
+    expect(reviewStatus("2026-06-10T00:00:00Z", 3, now).state).toBe("soon");
+  });
+  it("is overdue past the interval", () => {
+    const r = reviewStatus("2026-01-01T00:00:00Z", 3, now);
+    expect(r.state).toBe("overdue");
+    expect(r.days).toBeLessThan(0);
+  });
+  it("honours a custom interval", () => {
+    expect(reviewStatus("2026-08-01T00:00:00Z", 1, now).state).toBe("overdue");
+  });
+});
+
+describe("sanitizeHistory", () => {
+  it("drops entries with no usable date", () => {
+    expect(sanitizeHistoryEntry({ assets: [{ ticker: "A", current: 1 }] })).toBeNull();
+    expect(sanitizeHistoryEntry({ completedAt: "nonsense", assets: [{ ticker: "A", current: 1 }] })).toBeNull();
+  });
+  it("drops a snapshot whose assets are all unusable", () => {
+    expect(sanitizeHistoryEntry({ completedAt: "2026-01-31", assets: [{ ticker: "A", current: "abc" }] })).toBeNull();
+  });
+  it("rejects backfilled totals that are not finite numbers", () => {
+    expect(sanitizeHistoryEntry({ completedAt: "2026-01-31", totals: { value: "x", invested: 1 } })).toBeNull();
+    expect(sanitizeHistoryEntry({ completedAt: "2026-01-31", totals: { value: -5, invested: 1 } })).toBeNull();
+  });
+  it("ignores a crypto value larger than the portfolio value", () => {
+    const e = sanitizeHistoryEntry({ completedAt: "2026-01-31", totals: { value: 100, invested: 100, cryptoValue: 500 } });
+    expect(e.totals.cryptoValue).toBeUndefined();
+  });
+  it("preserves unknown per-asset fields", () => {
+    const e = sanitizeHistoryEntry({ completedAt: "2026-01-31", assets: [{ ticker: "A", current: 5, icon: "apple", holdings: 2 }] });
+    expect(e.assets[0]).toMatchObject({ icon: "apple", holdings: 2 });
+  });
+  it("sorts oldest first so a late-added backfill lands in the right place", () => {
+    const out = sanitizeHistory([
+      { completedAt: "2026-06-30", assets: [{ ticker: "A", current: 3 }] },
+      { completedAt: "2026-02-28", totals: { value: 1, invested: 1 } },
+    ]);
+    expect(out.map(e => e.completedAt)).toEqual(["2026-02-28", "2026-06-30"]);
+  });
+  it("returns an empty list for garbage", () => {
+    expect(sanitizeHistory(null)).toEqual([]);
+    expect(sanitizeHistory([null, 5, "x"])).toEqual([]);
   });
 });

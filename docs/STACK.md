@@ -72,6 +72,9 @@ npm run build    # production build into dist/
   measured container (ResizeObserver), so an 11px axis label is 11px in a wide
   chart and in a narrow card alike. A fixed `viewBox` scales text with the
   container and makes small charts illegible.
+- **Imported data is sanitised at the boundary.** `sanitizeHistory` in `engine.js` validates
+  every history entry on load and on import, drops what cannot be trusted, and re-sorts
+  chronologically — so a hand-edited backup or an out-of-order backfill can't put NaN on a chart.
 - **ESLint react-hooks: `rules-of-hooks` + `exhaustive-deps` only.** The v7
   `recommended` preset includes React Compiler rules that fail on ordinary
   React 18 code.
@@ -90,7 +93,7 @@ src/
     brokerImport.js .test.js   Trade Republic CSV/PDF parsers
 api/
   auth/    login.js callback.js logout.js _lib.js
-  market/  quotes.js fx.js snapshots.js
+  market/  quotes.js fx.js history.js snapshots.js
 middleware.js              Edge auth gate
 scripts/gen-icons.cjs      bundles Iconify icon bodies offline
 vercel.json                security headers (incl. CSP) + SPA rewrites
@@ -116,6 +119,7 @@ Set in Vercel. None are needed for `npm run dev` except live market data.
 
 | Date | Change |
 |---|---|
+| 2026-09-01 | Eight features: benchmark counterfactual (+ `/api/market/history`), money-weighted IRR, savings-plan sync, backfillable history months, quote-staleness surfacing, dividend estimate, reworked Overview KPIs, review cadence. `engine.js` grew the pure layer for all of them (102 tests). |
 | 2026-09-01 | Stack modernised: React 19, Vite 8 (Rolldown bundler — build 1.9s to 0.6s), @vitejs/plugin-react 6 (oxc transform, no Babel), pdfjs-dist 6, ESLint 10.9.1. CI moved to Node 22 (Vite 8 requires ^20.19 or >=22.12). |
 | 2026-09-01 | Analytics tab added — hand-rolled SVG charts, no chart library. `engine.js` gains the analytics data layer. |
 | 2026-09-01 | Icons moved to Iconify with offline bundling; all binary icon assets deleted. |

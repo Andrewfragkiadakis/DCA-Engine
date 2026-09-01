@@ -9,7 +9,9 @@ import {
   sanitizeNum, sanitizeStr, sanitizeDcaSchedule,
   currentMonthYM, activeDcaFromSchedule, nextDcaFromSchedule, addMonths,
   enrich, allocate, runProjection, freeCash, dcaFromIncome,
-  buildMonthlySeries, monthlyContributions,
+  buildMonthlySeries, monthlyContributions, sanitizeHistory, historyEntryPoint,
+  seriesIrr, benchmarkSeries, savingsPlanSplit, savingsPlanDrift,
+  dividendIncome, US_WITHHOLDING_PCT, reviewStatus,
 } from "./engine";
 import "./styles.css";
 
@@ -218,23 +220,40 @@ function sanitizeAsset(a) {
     target:  sanitizeNum(a.target,  0, 100, 0),
     icon:    typeof a.icon === "string" && Icons[a.icon] ? a.icon : "barChart",
     costBasis,
+    // Null, not zero, when never set: zero means "pays nothing" and is a real answer for
+    // an accumulating fund, so the dividend view must be able to tell the two apart.
+    yieldPct: a.yieldPct != null ? sanitizeNum(a.yieldPct, 0, 100, null) : null,
+    ucits:    !!a.ucits,
     ...(holdings != null ? { holdings } : {}),
     ...(typeof a._isin === "string" ? { _isin: a._isin.slice(0, 16) } : {}),
   };
 }
 
+// Benchmarks the /api/market/history endpoint will serve. Both are EUR-denominated Irish
+// UCITS ETFs, so a euro contribution converts one-to-one — keep that true for anything
+// added here, or the comparison silently needs FX handling.
+const BENCHMARK_OPTIONS = [
+  { key: "VWCE", label: "FTSE All-World (VWCE)" },
+  { key: "CSPX", label: "S&P 500 (CSPX)" },
+];
+
 // ─── DEFAULT DATA ─────────────────────────────────────────────
+// yieldPct is the trailing annual distribution yield, editable per asset — it drives the
+// dividend estimate and nothing else. Accumulating ETFs distribute nothing, so 0 is the
+// correct value for CSPX and VWCE, not a missing one.
+// ucits marks an EU/EEA UCITS fund, whose distributions are exempt for a Greek resident
+// while US shares lose 15% at source — see docs/research/2026-09-01-greece-tax-treatment.md.
 const DEFAULT_ASSETS = [
-  { name:"BTC",            ticker:"BTC",  cat:"Crypto",   current:178,  target:11.5,  icon:"bitcoin"    },
-  { name:"ETH",            ticker:"ETH",  cat:"Crypto",   current:87,   target:6.0,   icon:"ethereum"   },
-  { name:"NVIDIA",         ticker:"NVDA", cat:"Tech",     current:163,  target:6.67,  icon:"nvidia"     },
-  { name:"Apple",          ticker:"AAPL", cat:"Tech",     current:148,  target:6.67,  icon:"apple"      },
-  { name:"Microsoft",      ticker:"MSFT", cat:"Tech",     current:118,  target:6.67,  icon:"microsoft"  },
-  { name:"Coca-Cola",      ticker:"KO",   cat:"Dividend", current:239,  target:8.75,  icon:"coca_cola"  },
-  { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"jnj"        },
-  { name:"Core S&P 500",   ticker:"CSPX", cat:"ETF",      current:434,  target:18.0,  icon:"spy"        },
-  { name:"FTSE All World", ticker:"VWCE", cat:"ETF",      current:367,  target:15.0,  icon:"vwce"       },
-  { name:"Hi Div ETF",     ticker:"VHYL", cat:"ETF",      current:249,  target:12.0,  icon:"vhyl"       },
+  { name:"BTC",            ticker:"BTC",  cat:"Crypto",   current:178,  target:11.5,  icon:"bitcoin",   yieldPct:0,    ucits:false },
+  { name:"ETH",            ticker:"ETH",  cat:"Crypto",   current:87,   target:6.0,   icon:"ethereum",  yieldPct:0,    ucits:false },
+  { name:"NVIDIA",         ticker:"NVDA", cat:"Tech",     current:163,  target:6.67,  icon:"nvidia",    yieldPct:0.03, ucits:false },
+  { name:"Apple",          ticker:"AAPL", cat:"Tech",     current:148,  target:6.67,  icon:"apple",     yieldPct:0.5,  ucits:false },
+  { name:"Microsoft",      ticker:"MSFT", cat:"Tech",     current:118,  target:6.67,  icon:"microsoft", yieldPct:0.7,  ucits:false },
+  { name:"Coca-Cola",      ticker:"KO",   cat:"Dividend", current:239,  target:8.75,  icon:"coca_cola", yieldPct:2.9,  ucits:false },
+  { name:"J&J",            ticker:"JNJ",  cat:"Dividend", current:252,  target:8.75,  icon:"jnj",       yieldPct:3.0,  ucits:false },
+  { name:"Core S&P 500",   ticker:"CSPX", cat:"ETF",      current:434,  target:18.0,  icon:"spy",       yieldPct:0,    ucits:true  },
+  { name:"FTSE All World", ticker:"VWCE", cat:"ETF",      current:367,  target:15.0,  icon:"vwce",      yieldPct:0,    ucits:true  },
+  { name:"Hi Div ETF",     ticker:"VHYL", cat:"ETF",      current:249,  target:12.0,  icon:"vhyl",      yieldPct:3.1,  ucits:true  },
 ];
 const DEFAULT_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -266,7 +285,66 @@ const DEFAULT_STATE = {
   },
   priceSnapshots: [],
   brokerImportLog: [],
+  // The fixed per-ticker split currently set up as a Trade Republic savings plan. Stored
+  // so the app can tell when the broker's fixed split has fallen out of step with what
+  // the gap-weighted allocator would now do.
+  savingsPlan: { rows: [], monthly: 0, setAt: null },
+  // The plan calls for a periodic review; without a date the app cannot tell you one is due.
+  review: { intervalMonths: 3, lastReviewedAt: null },
+  // Cached month-end closes for the Analytics benchmark line.
+  benchmark: { key: "VWCE", label: null, closes: null, fetchedAt: null, status: null },
 };
+
+function sanitizeSavingsPlan(v) {
+  if (!v || typeof v !== "object" || !Array.isArray(v.rows)) return { rows: [], monthly: 0, setAt: null };
+  const seen = new Set();
+  const rows = v.rows
+    .filter(r => r && typeof r.ticker === "string")
+    .map(r => ({
+      ticker: sanitizeStr(r.ticker, 12).toUpperCase(),
+      name: typeof r.name === "string" ? sanitizeStr(r.name, 32) : "",
+      amount: Math.round(sanitizeNum(r.amount, 0, 1_000_000, 0)),
+    }))
+    .filter(r => {
+      if (!r.ticker || r.amount < 1 || seen.has(r.ticker)) return false;
+      seen.add(r.ticker);
+      return true;
+    })
+    .slice(0, 40);
+  return {
+    rows,
+    monthly: Math.round(sanitizeNum(v.monthly, 0, 1_000_000, rows.reduce((s2, r) => s2 + r.amount, 0))),
+    setAt: typeof v.setAt === "string" ? v.setAt : null,
+  };
+}
+
+function sanitizeReview(v) {
+  if (!v || typeof v !== "object") return { intervalMonths: 3, lastReviewedAt: null };
+  const at = typeof v.lastReviewedAt === "string" && !isNaN(new Date(v.lastReviewedAt)) ? v.lastReviewedAt : null;
+  return { intervalMonths: sanitizeNum(v.intervalMonths, 1, 24, 3), lastReviewedAt: at };
+}
+
+function sanitizeBenchmark(v) {
+  const fallback = { key: "VWCE", label: null, closes: null, fetchedAt: null, status: null };
+  if (!v || typeof v !== "object") return fallback;
+  const key = BENCHMARK_OPTIONS.some(o => o.key === v.key) ? v.key : "VWCE";
+  let closes = null;
+  if (v.closes && typeof v.closes === "object") {
+    closes = {};
+    for (const [ym, px] of Object.entries(v.closes)) {
+      const n = parseFloat(px);
+      if (/^\d{4}-\d{2}$/.test(ym) && isFinite(n) && n > 0) closes[ym] = n;
+    }
+    if (!Object.keys(closes).length) closes = null;
+  }
+  return {
+    key,
+    label: typeof v.label === "string" ? v.label.slice(0, 60) : null,
+    closes,
+    fetchedAt: typeof v.fetchedAt === "string" ? v.fetchedAt : null,
+    status: typeof v.status === "string" ? v.status.slice(0, 40) : null,
+  };
+}
 
 function sanitizeIncome(v) {
   if (!v || typeof v !== "object") return { monthlyNet: 0, label: "", asOf: null };
@@ -330,7 +408,7 @@ function loadState() {
       dca:              sanitizeNum(p.dca, 1, 1_000_000, 130),
       theme:            ["dark","light","auto"].includes(p.theme) ? p.theme : "auto",
       projectionMonths: sanitizeNum(p.projectionMonths, 1, 12, 3),
-      history:          Array.isArray(p.history) ? p.history.slice(-120) : [],
+      history:          sanitizeHistory(p.history),
       schemaVersion:    SCHEMA_VERSION,
       live: {
         enabled: !!p?.live?.enabled,
@@ -351,6 +429,9 @@ function loadState() {
       dcaSchedule: sanitizeDcaSchedule(p?.dcaSchedule),
       dcaAutoAppliedIds: Array.isArray(p?.dcaAutoAppliedIds) ? p.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
       cash: sanitizeCash(p?.cash),
+      savingsPlan: sanitizeSavingsPlan(p?.savingsPlan),
+      review: sanitizeReview(p?.review),
+      benchmark: sanitizeBenchmark(p?.benchmark),
       dcaRule: sanitizeDcaRule(p?.dcaRule),
       lastBackupAt: typeof p?.lastBackupAt === "string" ? p.lastBackupAt : null,
     };
@@ -567,8 +648,99 @@ function App() {
     return { basis, abs, pct: (abs / basis) * 100 };
   }, [state.assets, total]);
 
+  // Annual distribution yield per asset, plus the UCITS flag that decides whether a
+  // distribution is taxed at source. Kept out of updateAsset because an empty box means
+  // "unknown", which is a different answer from zero and must survive as null.
+  const updateYield = useCallback((ticker, raw, ucits) => {
+    setState(s => ({
+      ...s,
+      assets: s.assets.map(a => {
+        if (a.ticker !== ticker) return a;
+        const cleared = raw === "" || raw == null;
+        return {
+          ...a,
+          yieldPct: cleared ? null : sanitizeNum(raw, 0, 100, a.yieldPct),
+          ...(ucits === undefined ? {} : { ucits: !!ucits }),
+        };
+      }),
+    }));
+  }, []);
+
+  // Month-end closes for the benchmark counterfactual. A failure is reported as a status
+  // the Analytics tab explains, not as a silently empty chart.
+  const [benchLoading, setBenchLoading] = useState(false);
+  const refreshBenchmark = useCallback(async (key) => {
+    const target = BENCHMARK_OPTIONS.some(o => o.key === key) ? key : "VWCE";
+    setBenchLoading(true);
+    try {
+      const res = await fetch(`/api/market/history?benchmark=${encodeURIComponent(target)}&months=120`, { credentials: "same-origin" });
+      const data = await res.json();
+      setState(s => ({
+        ...s,
+        benchmark: sanitizeBenchmark({
+          key: target,
+          label: data?.label || null,
+          // Keep a previously loaded series for the same benchmark rather than blanking
+          // the chart because one refresh failed.
+          closes: data?.ok ? data.closes : (s.benchmark?.key === target ? s.benchmark?.closes : null),
+          fetchedAt: data?.ok ? new Date().toISOString() : (s.benchmark?.fetchedAt || null),
+          status: data?.ok ? "ok" : (data?.reason || "fetch_failed"),
+        }),
+      }));
+      if (data?.ok) showToast(`${data.label || target}: ${Object.keys(data.closes).length} months of prices loaded.`);
+      else showToast(data?.error || "Benchmark prices unavailable.", "error");
+    } catch (err) {
+      setState(s => ({ ...s, benchmark: sanitizeBenchmark({ ...(s.benchmark || {}), key: target, status: "fetch_failed" }) }));
+      showToast(`Benchmark fetch failed: ${err.message}`, "error");
+    } finally {
+      setBenchLoading(false);
+    }
+  }, [showToast]);
+
+  const setBenchmarkKey = useCallback((key) => {
+    const target = BENCHMARK_OPTIONS.some(o => o.key === key) ? key : "VWCE";
+    // Switching benchmark invalidates the cached closes — they belong to the old symbol.
+    setState(s => ({ ...s, benchmark: { key: target, label: null, closes: null, fetchedAt: null, status: null } }));
+    refreshBenchmark(target);
+  }, [refreshBenchmark]);
+
+  // Backfilled months are merged through the same sanitiser as an imported backup and
+  // re-sorted, so a month added out of order still lands in the right place on the chart.
+  const addBackfillMonth = useCallback((entry) => {
+    setState(s => ({ ...s, history: sanitizeHistory([...(s.history || []), entry]) }));
+  }, []);
+
+  const removeHistoryEntry = useCallback((completedAt) => {
+    setState(s => ({ ...s, history: (s.history || []).filter(h => h.completedAt !== completedAt) }));
+    showToast("Month removed from history.");
+  }, [showToast]);
+
+  const updateReview = useCallback((patch) => {
+    setState(s => ({ ...s, review: sanitizeReview({ ...(s.review || {}), ...patch }) }));
+  }, []);
+
+  const saveSavingsPlan = useCallback((rows, monthly) => {
+    setState(s => ({ ...s, savingsPlan: sanitizeSavingsPlan({ rows, monthly, setAt: new Date().toISOString() }) }));
+    showToast("Savings plan recorded — the app will flag it when it drifts.");
+  }, [showToast]);
+
   const cashFree = useMemo(() => freeCash(state.cash), [state.cash]);
   const netWorth = total + (state.cash?.available || 0);
+
+  // Money-weighted return over the whole tracked history. Simple "since buy" percentages
+  // overstate a portfolio built by monthly contributions, because money added last month
+  // has not had the same time to work as money added two years ago.
+  const wholeSeries = useMemo(() => buildMonthlySeries(state.history, state.assets), [state.history, state.assets]);
+  const irrAnnual = useMemo(() => seriesIrr(wholeSeries), [wholeSeries]);
+
+  const review = useMemo(
+    () => reviewStatus(state.review?.lastReviewedAt, state.review?.intervalMonths),
+    [state.review],
+  );
+  const markReviewed = useCallback(() => {
+    setState(s => ({ ...s, review: { ...(s.review || { intervalMonths: 3 }), lastReviewedAt: new Date().toISOString() } }));
+    showToast("Review logged — next one scheduled.");
+  }, [showToast]);
 
   // Auto-apply a scheduled DCA change once, the first time its effective month arrives.
   // After that, state.dca is yours to edit manually until the *next* schedule entry
@@ -1074,7 +1246,7 @@ function App() {
           dca:              sanitizeNum(parsed.dca, 1, 1_000_000, 130),
           theme:            ["dark","light","auto"].includes(parsed.theme) ? parsed.theme : "auto",
           projectionMonths: sanitizeNum(parsed.projectionMonths, 1, 12, 3),
-          history:          Array.isArray(parsed.history) ? parsed.history.slice(-120) : [],
+          history:          sanitizeHistory(parsed.history),
           schemaVersion:    SCHEMA_VERSION,
           live: {
             enabled: !!parsed?.live?.enabled,
@@ -1095,6 +1267,9 @@ function App() {
           dcaSchedule: sanitizeDcaSchedule(parsed?.dcaSchedule),
           dcaAutoAppliedIds: Array.isArray(parsed?.dcaAutoAppliedIds) ? parsed.dcaAutoAppliedIds.filter(x => typeof x === "string").slice(-48) : [],
           cash: sanitizeCash(parsed?.cash),
+          savingsPlan: sanitizeSavingsPlan(parsed?.savingsPlan),
+          review: sanitizeReview(parsed?.review),
+          benchmark: sanitizeBenchmark(parsed?.benchmark),
           dcaRule: sanitizeDcaRule(parsed?.dcaRule),
           lastBackupAt: new Date().toISOString(),
           assets,
@@ -1174,17 +1349,15 @@ function App() {
           const kpiRings = [
             Math.min(100, Math.max(0, 100 - projAvgDrift * 15)),
             100,
-            Math.min(100, (state.projectionMonths / 12) * 100),
-            Math.max(0, 100 - projAvgDrift * 18),
+            // Ring reads "how much of a monthly contribution is sitting idle" — full is bad here.
+            state.dca > 0 ? Math.min(100, (cashFree / state.dca) * 100) : (cashFree > 0 ? 100 : 0),
+            irrAnnual != null ? Math.min(100, Math.max(0, (irrAnnual * 100 + 10) * 3.3)) : 0,
           ];
           const kpiSparks = [
             histTotals.length >= 2 ? histTotals.slice(-8) : null,
             null,
             null,
-            histTotals.length >= 2 ? histTotals.map((_, i, arr) => {
-              const step = projection.steps[Math.min(i, projection.steps.length - 1)];
-              return step ? step.total : arr[i];
-            }).slice(-8) : null,
+            wholeSeries.length >= 2 ? wholeSeries.map(p => p.value).slice(-8) : null,
           ];
           return (
             <div className={`kpi-grid ${loaded ? "in" : ""}`} role="region" aria-label="Portfolio summary">
@@ -1205,8 +1378,23 @@ function App() {
                     : (upcomingDcaChange ? `Next: ${cy}${upcomingDcaChange.amount} from ${upcomingDcaChange.effectiveFrom}` : "Per contribution"),
                   c:"var(--accent-indigo)", icon:"zap",
                 },
-                { l:`${state.projectionMonths}-Mo Target`, v:`${cy}${Math.round(projection.finalTotal).toLocaleString()}`, s:`+${cy}${(state.dca * state.projectionMonths).toLocaleString()}`, c:"var(--accent-green)", icon:"trendUp" },
-                { l:"Proj. Drift",        v:`${projAvgDrift.toFixed(1)}%`,                                s:`Avg abs · ${state.projectionMonths}mo`, c: projAvgDrift<1?"var(--accent-green)":projAvgDrift<2.5?"var(--accent-amber)":"var(--accent-red)", icon:"sliders" },
+                {
+                  // Idle cash beats a projection here: it is the one number that asks for
+                  // an action today, and uninvested cash was the portfolio's real leak.
+                  l:"Idle Cash",
+                  v:`${cy}${Math.round(cashFree).toLocaleString()}`,
+                  s: cashFree >= 1
+                    ? `Ready to deploy${state.cash?.committed ? ` · ${cy}${Math.round(state.cash.committed)} committed` : ""}`
+                    : "Nothing sitting uninvested",
+                  c: cashFree >= state.dca ? "var(--accent-amber)" : "var(--accent-green)", icon:"coins",
+                },
+                {
+                  l:"Return (IRR)",
+                  v: irrAnnual != null ? `${irrAnnual >= 0 ? "+" : "−"}${Math.abs(irrAnnual * 100).toFixed(1)}%` : "—",
+                  s: irrAnnual != null ? "Money-weighted, annualised" : "Needs two months of history",
+                  c: irrAnnual == null ? "var(--text3)" : irrAnnual >= 0 ? "var(--accent-green)" : "var(--accent-red)",
+                  icon:"trendUp",
+                },
               ].map((k, i) => (
                 <div key={i} className="kpi">
                   <div className="kpi-header">
@@ -1221,6 +1409,22 @@ function App() {
             </div>
           );
         })()}
+
+        {review.state !== "ok" && (
+          <div className={`banner ${review.state === "overdue" ? "banner-warn" : "banner-info"}`} role={review.state === "overdue" ? "alert" : "status"}>
+            <Icon name={review.state === "overdue" ? "warning" : "calendar"} style={{ width:16, height:16, flexShrink:0 }}/>
+            <span>
+              {review.state === "unset"
+                ? <>No portfolio review logged yet. Your plan calls for one every <strong>{state.review?.intervalMonths ?? 3} months</strong>.</>
+                : review.state === "overdue"
+                  ? <>Portfolio review is <strong>{Math.abs(review.days)} day{Math.abs(review.days) === 1 ? "" : "s"} overdue</strong> — it was due {review.due.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })}.</>
+                  : <>Portfolio review due in <strong>{review.days} day{review.days === 1 ? "" : "s"}</strong> ({review.due.toLocaleDateString("en-GB", { day:"numeric", month:"short" })}).</>}
+            </span>
+            <button className="btn-ghost sm" onClick={markReviewed} style={{ marginLeft:"auto", flexShrink:0 }}>
+              <Icon name="check" style={{ width:12, height:12 }}/>Mark reviewed
+            </button>
+          </div>
+        )}
 
         {!targetOk && (
           <div className="banner banner-warn" role="alert">
@@ -1293,10 +1497,21 @@ function App() {
               months={state.projectionMonths}
               cashFree={cashFree}
               onDeployCash={doDeployCash}
+              savingsPlan={state.savingsPlan}
+              onSaveSavingsPlan={saveSavingsPlan}
             />
           )}
           {displayedTab === 2 && (
-            <AnalyticsTab history={state.history} assets={state.assets} cy={cy}/>
+            <AnalyticsTab
+              history={state.history}
+              assets={state.assets}
+              cy={cy}
+              benchmark={state.benchmark}
+              benchLoading={benchLoading}
+              onRefreshBenchmark={refreshBenchmark}
+              onSetBenchmarkKey={setBenchmarkKey}
+              onUpdateYield={updateYield}
+            />
           )}
           {displayedTab === 3 && (
             <HistoryTab history={state.history} cy={cy} priceSnapshots={state.priceSnapshots}/>
@@ -1337,6 +1552,9 @@ function App() {
           alertsEnabled={state.alerts.enabled}
           onToggleAlerts={(enabled) => setState(s => ({ ...s, alerts: { ...s.alerts, enabled } }))}
           brokerImportLog={state.brokerImportLog}
+          onAddBackfillMonth={addBackfillMonth}
+          onRemoveHistoryEntry={removeHistoryEntry}
+          onUpdateReview={updateReview}
           onUpdateIncome={updateIncome}
           onUpdateCash={updateCash}
           onUpdateDcaRule={updateDcaRule}
@@ -1433,7 +1651,50 @@ function ThemeToggle({ theme, onToggle }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────
+// How old a quote may get before the values on screen stop deserving the word "live".
+// Three refresh cycles, floored at five minutes so a 15-second setting doesn't nag.
+function quoteFreshness(liveEnabled, lastFetchedAt, refreshSec, nowMs) {
+  if (!liveEnabled || !lastFetchedAt) return { stale: false, ageSec: null };
+  const ageSec = Math.max(0, Math.round((nowMs - new Date(lastFetchedAt).getTime()) / 1000));
+  if (!isFinite(ageSec)) return { stale: false, ageSec: null };
+  return { stale: ageSec > Math.max(refreshSec * 3, 300), ageSec };
+}
+
+function ageLabel(sec) {
+  if (sec == null) return "";
+  if (sec < 90) return `${sec}s ago`;
+  if (sec < 5400) return `${Math.round(sec / 60)} min ago`;
+  if (sec < 172800) return `${Math.round(sec / 3600)} h ago`;
+  return `${Math.round(sec / 86400)} d ago`;
+}
+
 function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEditOpen, onUpdateCurrent, assets, liveEnabled, liveRefreshSec, liveLastFetchedAt, liveLoading, liveError, liveModel, onToggleLive, onRefreshLive, onUpdateLiveRefresh, driftAlerts }) {
+  // Ticks only while live tracking is on, so a stale badge appears without a refresh.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!liveEnabled) return;
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [liveEnabled]);
+
+  const freshness = quoteFreshness(liveEnabled, liveLastFetchedAt, liveRefreshSec, nowMs);
+
+  // Where each row's number actually came from. A value that looks live but is really a
+  // manual figure nudged by today's percentage move is the failure mode worth naming.
+  const provenance = useMemo(() => {
+    const map = new Map();
+    if (!liveEnabled || !liveModel) return map;
+    for (const row of liveModel.rows || []) {
+      if (row.quotePrice == null) map.set(row.ticker, "noprice");
+      else if (!row.holdingsComputed) map.set(row.ticker, "manual");
+    }
+    return map;
+  }, [liveEnabled, liveModel]);
+
+  const manualCount = useMemo(
+    () => [...provenance.values()].filter(v => v === "manual").length,
+    [provenance],
+  );
   const [localVals, setLocalVals] = useState({});
 
   useEffect(() => {
@@ -1484,9 +1745,9 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
             </button>
           </div>
           {liveEnabled && (
-            <div className="live-last-updated mono">
+            <div className="live-last-updated mono" style={freshness.stale ? { color:"var(--accent-amber)" } : undefined}>
               {liveLastFetchedAt
-                ? `Last updated: ${new Date(liveLastFetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+                ? `Last updated: ${new Date(liveLastFetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${ageLabel(freshness.ageSec)}`
                 : liveLoading ? "Fetching…" : "Not yet fetched"}
             </div>
           )}
@@ -1498,7 +1759,7 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
           <>
             <div className="live-meta mono">
               Sources: {Object.entries(liveModel.providerHealth || {}).filter(([, v]) => v === "ok").map(([k]) => k).join(", ") || "none"}
-              {liveModel.unresolved?.length ? ` · Unresolved: ${liveModel.unresolved.length}` : ""}
+              {liveModel.unresolved?.length ? ` · No price: ${liveModel.unresolved.join(", ")}` : ""}
             </div>
             <div className="live-kpis">
               <div className="live-kpi">
@@ -1594,6 +1855,36 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
 
       {/* Current Drift — per-asset detail */}
       <Sh title="Current Drift" subtitle="Sorted by value, largest first"/>
+
+      {freshness.stale && (
+        <div className="banner banner-warn" role="alert">
+          <Icon name="warning" style={{ width:16, height:16, flexShrink:0 }}/>
+          <span>Prices last updated <strong>{ageLabel(freshness.ageSec)}</strong>. The values below are not current.</span>
+          <button className="btn-ghost sm" onClick={() => onRefreshLive()} disabled={liveLoading} style={{ marginLeft:"auto", flexShrink:0 }}>
+            <Icon name="refresh" style={{ width:12, height:12 }}/>{liveLoading ? "Refreshing" : "Refresh now"}
+          </button>
+        </div>
+      )}
+
+      {manualCount > 0 && (
+        <div className="banner banner-info" role="status">
+          <Icon name="info" style={{ width:16, height:16, flexShrink:0 }}/>
+          <span>
+            <strong>{manualCount} position{manualCount === 1 ? " has" : "s have"} no unit count</strong>, so {manualCount === 1 ? "its value moves" : "their values move"} only
+            by today&apos;s percentage change rather than units × price. Set units in Update Values for true live valuation.
+          </span>
+        </div>
+      )}
+
+      {liveEnabled && liveModel?.unresolved?.length > 0 && (
+        <div className="banner banner-warn" role="alert">
+          <Icon name="warning" style={{ width:16, height:16, flexShrink:0 }}/>
+          <span>
+            No live price for <strong>{liveModel.unresolved.slice(0, 6).join(", ")}</strong>
+            {liveModel.unresolved.length > 6 ? ` +${liveModel.unresolved.length - 6} more` : ""} — those rows show the last value you entered by hand.
+          </span>
+        </div>
+      )}
       <div className="drift-list" role="list">
         {sortedDrift.map((a, i) => {
           const c    = CAT_COLORS[a.cat] || "#6366f1";
@@ -1601,6 +1892,7 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
           const barW = Math.min((ad / 6) * 55, 55);
           const neg  = a.drift < 0;
           const urg  = ad > 3 ? "var(--accent-red)" : ad > 1.5 ? "var(--accent-amber)" : "var(--accent-green)";
+          const src  = provenance.get(a.ticker) || null;
           return (
             <div key={a.ticker} className="d-row" role="listitem" style={{ animationDelay:`${i * 0.035}s` }}>
               <div className="d-left">
@@ -1608,7 +1900,17 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
                   <Icon name={a.icon}/>
                 </div>
                 <div className="d-info">
-                  <div className="d-ticker">{a.name} <span className="d-tick-paren">({a.ticker})</span></div>
+                  <div className="d-ticker">
+                    {a.name} <span className="d-tick-paren">({a.ticker})</span>
+                    {src === "noprice" && (
+                      <span
+                        className="d-src d-src-off"
+                        title="No live quote resolved for this symbol — the value shown is what you last entered."
+                      >
+                        no price
+                      </span>
+                    )}
+                  </div>
                   <div className="d-cat">{a.cat}</div>
                 </div>
               </div>
@@ -1696,6 +1998,99 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
   );
 }
 
+// ─── SAVINGS PLAN SYNC ─────────────────────────────────────────
+// The gap in the app's advice: the allocator recomputes a gap-weighted split every month,
+// but a Trade Republic savings plan executes one fixed split until you change it. This
+// card turns today's allocation into a fixed split you can paste into the broker, records
+// what you set, and then tells you when the two have parted company.
+function SavingsPlanCard({ assets, total, dca, cy, plan, onSavePlan, showToast }) {
+  const [copied, setCopied] = useState(false);
+  const proposed = useMemo(() => savingsPlanSplit(assets, total, dca), [assets, total, dca]);
+  const stored = plan?.rows?.length ? plan.rows : null;
+  const drift = useMemo(
+    () => (stored ? savingsPlanDrift(stored, assets, total, dca) : null),
+    [stored, assets, total, dca],
+  );
+  // The stored plan was set for a different monthly amount — that alone makes it wrong.
+  const amountChanged = stored && plan.monthly > 0 && Math.round(plan.monthly) !== Math.round(dca);
+  const needsRetune = amountChanged || (drift != null && drift >= 15);
+
+  const asText = proposed.map(r => `${r.ticker}  ${cy}${r.amount}`).join("\n");
+
+  function doCopy() {
+    copyToClipboard(`Trade Republic savings plans — ${cy}${Math.round(dca)}/month\n${asText}`)
+      .then(() => { setCopied(true); showToast("Savings plan split copied"); setTimeout(() => setCopied(false), 1800); })
+      .catch(() => showToast("Copy failed — select the values manually", "error"));
+  }
+
+  if (!proposed.length) return null;
+
+  return (
+    <div className="sp-panel">
+      <div className="sp-head">
+        <div>
+          <div className="sp-title">
+            <Icon name="calendar" style={{ width:15, height:15, color:"var(--accent-indigo)" }}/>
+            Savings plan split
+            {stored && !needsRetune && <span className="sp-badge sp-ok">in sync</span>}
+            {needsRetune && <span className="sp-badge sp-warn">re-tune</span>}
+            {!stored && <span className="sp-badge sp-none">not recorded</span>}
+          </div>
+          <div className="sp-sub">
+            A savings plan is a fixed split; the monthly plan is gap-weighted. This is today&apos;s
+            allocation expressed as fixed amounts totalling <strong>{cy}{Math.round(dca)}</strong>.
+          </div>
+        </div>
+        <div className="sp-actions">
+          <button className="btn-ghost sm" onClick={doCopy}>
+            <Icon name={copied ? "check" : "copy"} style={{ width:12, height:12 }}/>{copied ? "Copied" : "Copy"}
+          </button>
+          <button className="btn-primary sm" onClick={() => onSavePlan(proposed, dca)}>
+            <Icon name="check" style={{ width:12, height:12 }}/>{stored ? "Update record" : "I set this up"}
+          </button>
+        </div>
+      </div>
+
+      <div className="sp-rows">
+        {proposed.map(r => {
+          const was = stored?.find(x => x.ticker === r.ticker)?.amount;
+          const delta = was != null ? r.amount - was : null;
+          return (
+            <div key={r.ticker} className="sp-row">
+              <span className="sp-row-t">{r.ticker}</span>
+              <span className="sp-row-bar">
+                <span className="sp-row-bar-f" style={{ width:`${Math.max(3, (r.amount / Math.max(1, proposed[0].amount)) * 100)}%` }}/>
+              </span>
+              <span className="mono sp-row-amt">{cy}{r.amount}</span>
+              <span className="mono sp-row-delta" style={{ color: !delta ? "var(--text4)" : delta > 0 ? "var(--accent-green)" : "var(--accent-amber)" }}>
+                {delta == null ? "new" : delta === 0 ? "—" : `${delta > 0 ? "+" : "−"}${cy}${Math.abs(delta)}`}
+              </span>
+            </div>
+          );
+        })}
+        {stored?.filter(r => !proposed.some(p => p.ticker === r.ticker)).map(r => (
+          <div key={r.ticker} className="sp-row sp-row-drop">
+            <span className="sp-row-t">{r.ticker}</span>
+            <span className="sp-row-bar"/>
+            <span className="mono sp-row-amt">{cy}0</span>
+            <span className="mono sp-row-delta" style={{ color:"var(--accent-red)" }}>stop</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="sp-foot">
+        {!stored
+          ? <>Nothing recorded yet. Set these amounts in {PLATFORM_NAME}, then press <strong>I set this up</strong> so the app can tell you when they go stale.</>
+          : amountChanged
+            ? <>Recorded for <strong>{cy}{Math.round(plan.monthly)}/month</strong>, but your contribution is now <strong>{cy}{Math.round(dca)}</strong>. The split needs redoing.</>
+            : needsRetune
+              ? <>Your recorded plan is <strong>{drift.toFixed(0)}% away</strong> from what the allocator would set up today. Worth re-tuning in {PLATFORM_NAME}.</>
+              : <>Recorded {plan.setAt ? new Date(plan.setAt).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" }) : "recently"} and still within <strong>{drift.toFixed(0)}%</strong> of today&apos;s allocation. No action needed.</>}
+      </div>
+    </div>
+  );
+}
+
 // ─── PLAN TAB (month stepper + N-month outlook) ────────────────
 // One-off lump-sum deployment of idle cash, as opposed to the recurring monthly DCA.
 // Uses the same gap-weighted allocator, so a big deposit lands on whatever is most
@@ -1780,7 +2175,7 @@ function DeployCashPanel({ assets, total, cashFree, cy, onDeploy, showToast }) {
   );
 }
 
-function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast, avgDrift, maxDrift, aligned, months, cashFree, onDeployCash }) {
+function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast, avgDrift, maxDrift, aligned, months, cashFree, onDeployCash, savingsPlan, onSaveSavingsPlan }) {
   const [monthIndex, setMonthIndex] = useState(0);
   const lastIndex = projection.steps.length - 1;
   const clamped = Math.min(monthIndex, Math.max(0, lastIndex));
@@ -1796,6 +2191,15 @@ function PlanTab({ projection, dca, cy, onConfirmLock, assets, total, showToast,
         cashFree={cashFree}
         cy={cy}
         onDeploy={onDeployCash}
+        showToast={showToast}
+      />
+      <SavingsPlanCard
+        assets={assets}
+        total={total}
+        dca={dca}
+        cy={cy}
+        plan={savingsPlan}
+        onSavePlan={onSaveSavingsPlan}
         showToast={showToast}
       />
       <div className="plan-stepper">
@@ -2051,12 +2455,15 @@ function HealthTab({ finalPort, finalTotal, avgDrift, maxDrift, aligned, cy, mon
 
 // ─── ANALYTICS ────────────────────────────────────────────────
 // Chart palette validated against this app's dark surface (#0a0f1a) with the dataviz
-// validator: VALUE #3987e5 sits inside the dark lightness band with >=3:1 contrast;
-// CONTEXT #9aa3b2 separates from it by ΔE 16.5 (normal vision) / 14.0 (CVD), clearing
-// the 15 floor. This is an emphasis pair — value is the subject, invested is context —
-// so both series are direct-labelled and a legend is always shown.
+// validator, all pairs: VALUE #3987e5 is the subject, CONTEXT #9aa3b2 is deliberately
+// low-chroma context, BENCH #c2762b separates from both (worst normal-vision ΔE 16.5,
+// worst CVD ΔE 14.0 protan / 11.7 tritan) with every colour clearing 3:1 contrast.
+// Each series also carries a distinct stroke pattern and a direct end label, so identity
+// never rests on colour alone. A purple benchmark was tried first and rejected — ΔE 5.1
+// against the blue under protanopia.
 const VIZ_VALUE = "#3987e5";
 const VIZ_CONTEXT = "#9aa3b2";
+const VIZ_BENCH = "#c2762b";
 
 function fmtEur(n, cy) {
   return `${cy}${Math.round(n).toLocaleString()}`;
@@ -2096,20 +2503,21 @@ function useMeasuredWidth() {
   return [ref, width];
 }
 
-// Value-vs-invested chart. Single y-scale on purpose: both series are euros, so a
-// second axis would be a lie. The band between them is the unrealised P&L.
-function ProgressChart({ series, cy, height = 260, compact = false }) {
+// Value-vs-invested chart, optionally with a benchmark counterfactual. Single y-scale on
+// purpose: every series is in euros, so a second axis would be a lie.
+function ProgressChart({ series, cy, height = 260, compact = false, benchLabel = null }) {
   const [hover, setHover] = useState(null);
   const [wrapRef, measured] = useMeasuredWidth();
 
   if (!series || series.length < 2) {
     return (
       <div className="viz-empty">
-        Needs at least two months of history to plot. Lock in a month, or backfill past months.
+        Needs at least two months of history to plot. Lock in a month, or backfill past months from Settings → Data.
       </div>
     );
   }
 
+  const hasBench = !!benchLabel && series.some(p => p.benchmark != null);
   const padL = compact ? 52 : 66;
   const padR = compact ? 14 : 18;
   const padT = 12;
@@ -2119,8 +2527,9 @@ function ProgressChart({ series, cy, height = 260, compact = false }) {
   const innerW = Math.max(40, W - padL - padR);
   const innerH = H - padT - padB;
 
-  const lo = Math.min(...series.flatMap(p => [p.value, p.invested]));
-  const hi = Math.max(...series.flatMap(p => [p.value, p.invested]));
+  const all = series.flatMap(p => [p.value, p.invested, ...(hasBench && p.benchmark != null ? [p.benchmark] : [])]);
+  const lo = Math.min(...all);
+  const hi = Math.max(...all);
   const span = hi - lo || Math.max(1, hi * 0.1);
   // Pad the range by a fraction of the span (so the plot fills the box), then draw grid
   // lines only on round multiples inside it. Snapping the range itself to round numbers
@@ -2132,7 +2541,11 @@ function ProgressChart({ series, cy, height = 260, compact = false }) {
   const x = i => padL + (series.length === 1 ? innerW / 2 : (i / (series.length - 1)) * innerW);
   const y = v => padT + innerH - ((v - yMin) / (yMax - yMin || 1)) * innerH;
 
-  const line = key => series.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
+  const line = key => series
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => p[key] != null)
+    .map(({ p, i }, n) => `${n === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`)
+    .join(" ");
 
   // One quad per month rather than one blanket fill: a month that was under water stays
   // red even if the portfolio is in profit today.
@@ -2150,11 +2563,15 @@ function ProgressChart({ series, cy, height = 260, compact = false }) {
   const gridVals = [];
   for (let v = Math.ceil(yMin / step) * step; v <= yMax; v += step) gridVals.push(v);
 
+  const shown = hover != null ? series[hover] : last;
+  const aheadOfBench = shown.benchmark != null ? shown.value - shown.benchmark : null;
+
   return (
     <div className="viz-wrap" ref={wrapRef}>
       <div className="viz-legend">
-        <span className="viz-key"><i style={{ background: VIZ_VALUE }}/>Value</span>
-        <span className="viz-key"><i style={{ background: VIZ_CONTEXT }}/>Invested</span>
+        <span className="viz-key"><i className="viz-sw-solid" style={{ background: VIZ_VALUE }}/>Value</span>
+        <span className="viz-key"><i className="viz-sw-dash" style={{ background: VIZ_CONTEXT }}/>Invested</span>
+        {hasBench && <span className="viz-key"><i className="viz-sw-dot" style={{ background: VIZ_BENCH }}/>{benchLabel}</span>}
       </div>
       <svg
         className="viz-svg"
@@ -2162,7 +2579,11 @@ function ProgressChart({ series, cy, height = 260, compact = false }) {
         width={W}
         height={H}
         role="img"
-        aria-label={`Portfolio value versus amount invested over ${series.length} points. Latest value ${fmtEur(last.value, cy)}, invested ${fmtEur(last.invested, cy)}.`}
+        aria-label={
+          `Portfolio value versus amount invested over ${series.length} points. `
+          + `Latest value ${fmtEur(last.value, cy)}, invested ${fmtEur(last.invested, cy)}.`
+          + (hasBench && last.benchmark != null ? ` ${benchLabel} counterfactual ${fmtEur(last.benchmark, cy)}.` : "")
+        }
         onMouseLeave={() => setHover(null)}
         onMouseMove={e => {
           const r = e.currentTarget.getBoundingClientRect();
@@ -2182,11 +2603,17 @@ function ProgressChart({ series, cy, height = 260, compact = false }) {
           <path key={i} d={b.d} fill={b.up ? "rgba(52,211,153,.16)" : "rgba(239,68,68,.14)"} stroke="none"/>
         ))}
         <path d={line("invested")} fill="none" stroke={VIZ_CONTEXT} strokeWidth="2" strokeDasharray="5 4" strokeLinejoin="round"/>
+        {hasBench && (
+          <path d={line("benchmark")} fill="none" stroke={VIZ_BENCH} strokeWidth="2" strokeDasharray="1.5 3.5" strokeLinecap="round" strokeLinejoin="round"/>
+        )}
         <path d={line("value")} fill="none" stroke={VIZ_VALUE} strokeWidth="2" strokeLinejoin="round"/>
 
         {series.map((p, i) => (
           <g key={i}>
             <circle cx={x(i)} cy={y(p.invested)} r="4" fill={VIZ_CONTEXT} stroke="#0a0f1a" strokeWidth="2"/>
+            {hasBench && p.benchmark != null && (
+              <circle cx={x(i)} cy={y(p.benchmark)} r="3.5" fill={VIZ_BENCH} stroke="#0a0f1a" strokeWidth="2"/>
+            )}
             <circle cx={x(i)} cy={y(p.value)} r="4.5" fill={VIZ_VALUE} stroke="#0a0f1a" strokeWidth="2"/>
           </g>
         ))}
@@ -2214,25 +2641,18 @@ function ProgressChart({ series, cy, height = 260, compact = false }) {
       </svg>
 
       <div className="viz-readout">
-        {hover != null ? (
-          <>
-            <strong>{series[hover].label}</strong>
-            <span>Value <b style={{ color: VIZ_VALUE }}>{fmtEur(series[hover].value, cy)}</b></span>
-            <span>Invested <b style={{ color: VIZ_CONTEXT }}>{fmtEur(series[hover].invested, cy)}</b></span>
-            <span>P&amp;L <b style={{ color: series[hover].pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
-              {series[hover].pnl >= 0 ? "+" : "−"}{fmtEur(Math.abs(series[hover].pnl), cy)}
-            </b></span>
-          </>
-        ) : (
-          <>
-            <strong>Latest</strong>
-            <span>Value <b style={{ color: VIZ_VALUE }}>{fmtEur(last.value, cy)}</b></span>
-            <span>Invested <b style={{ color: VIZ_CONTEXT }}>{fmtEur(last.invested, cy)}</b></span>
-            <span>P&amp;L <b style={{ color: gaining ? "var(--accent-green)" : "var(--accent-red)" }}>
-              {gaining ? "+" : "−"}{fmtEur(Math.abs(last.pnl), cy)}
-            </b></span>
-          </>
+        <strong>{hover != null ? (shown.label === "Now" ? "Now" : vizTick(shown)) : "Latest"}</strong>
+        <span>Value <b style={{ color: VIZ_VALUE }}>{fmtEur(shown.value, cy)}</b></span>
+        <span>Invested <b style={{ color: VIZ_CONTEXT }}>{fmtEur(shown.invested, cy)}</b></span>
+        <span>P&amp;L <b style={{ color: shown.pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+          {shown.pnl >= 0 ? "+" : "−"}{fmtEur(Math.abs(shown.pnl), cy)}
+        </b></span>
+        {aheadOfBench != null && (
+          <span>vs {benchLabel} <b style={{ color: aheadOfBench >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+            {aheadOfBench >= 0 ? "+" : "−"}{fmtEur(Math.abs(aheadOfBench), cy)}
+          </b></span>
         )}
+        {hover == null && !gaining && <span className="viz-note">Below cost</span>}
       </div>
     </div>
   );
@@ -2264,16 +2684,135 @@ function BucketCard({ title, subtitle, series, cy }) {
   );
 }
 
-function AnalyticsTab({ history, assets, cy }) {
-  const isCrypto = a => a.cat === "Crypto";
-  const all    = useMemo(() => buildMonthlySeries(history, assets), [history, assets]);
-  const crypto = useMemo(() => buildMonthlySeries(history, assets, isCrypto), [history, assets]);
-  const rest   = useMemo(() => buildMonthlySeries(history, assets, a => !isCrypto(a)), [history, assets]);
-  const contribs = useMemo(() => monthlyContributions(history), [history]);
+// Expected distribution income. Yields are entered by hand — nothing in the free market
+// data tier reports them reliably — so the card says so rather than implying it is live.
+function DividendCard({ assets, cy, onUpdateYield }) {
+  const [open, setOpen] = useState(false);
+  const income = useMemo(() => dividendIncome(assets), [assets]);
+  const editable = useMemo(() => [...assets].sort((a, b) => (b.yieldPct ?? -1) - (a.yieldPct ?? -1)), [assets]);
 
+  return (
+    <div className="viz-card div-card">
+      <div className="viz-card-head">
+        <div>
+          <div className="viz-card-title">Expected annual income</div>
+          <div className="viz-card-sub">
+            {income.coveredCount > 0
+              ? `From ${income.coveredCount} paying position${income.coveredCount === 1 ? "" : "s"} at the yields you entered`
+              : "No yields entered yet"}
+          </div>
+        </div>
+        <button className="btn-ghost sm" onClick={() => setOpen(v => !v)} aria-expanded={open}>
+          <Icon name="edit" style={{ width:12, height:12 }}/>{open ? "Done" : "Yields"}
+        </button>
+      </div>
+
+      {income.coveredCount === 0 ? (
+        <div className="viz-empty">Enter an annual yield for your paying positions to see expected income.</div>
+      ) : (
+        <>
+          <div className="div-kpis">
+            <div className="div-kpi">
+              <span>Gross</span>
+              <strong className="mono">{cy}{income.gross.toFixed(0)}</strong>
+            </div>
+            <div className="div-kpi">
+              <span>After withholding</span>
+              <strong className="mono" style={{ color:"var(--accent-green)" }}>{cy}{income.net.toFixed(0)}</strong>
+            </div>
+            <div className="div-kpi">
+              <span>Lost at source</span>
+              <strong className="mono" style={{ color: income.withheld > 0 ? "var(--accent-red)" : undefined }}>
+                {income.withheld > 0 ? "−" : ""}{cy}{income.withheld.toFixed(0)}
+              </strong>
+            </div>
+            <div className="div-kpi">
+              <span>Yield on portfolio</span>
+              <strong className="mono">{income.yieldOnPortfolioPct.toFixed(2)}%</strong>
+            </div>
+          </div>
+
+          <div className="div-rows">
+            {income.rows.map(r => (
+              <div key={r.ticker} className="div-row">
+                <span className="div-row-name">
+                  {r.name} <span className="d-tick-paren">({r.ticker})</span>
+                  {r.ucits
+                    ? <span className="div-tag div-tag-ok" title="EU/EEA UCITS — distributions are exempt for a Greek tax resident">UCITS</span>
+                    : <span className="div-tag div-tag-wh" title={`Non-UCITS — ${US_WITHHOLDING_PCT}% withheld at source and not recoverable`}>−{US_WITHHOLDING_PCT}%</span>}
+                </span>
+                <span className="mono div-row-y">{r.yieldPct.toFixed(2)}%</span>
+                <span className="mono div-row-amt">{cy}{r.net < 10 ? r.net.toFixed(1) : r.net.toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="div-foot">
+            An estimate from the yields entered below, at today&apos;s values. UCITS funds keep the whole
+            distribution; US shares lose {US_WITHHOLDING_PCT}% at source.
+          </div>
+        </>
+      )}
+
+      {open && (
+        <div className="div-edit">
+          {editable.map(a => (
+            <label key={a.ticker} className="div-edit-row">
+              <span className="div-edit-t">{a.ticker}</span>
+              <span className="div-edit-inp">
+                <input
+                  className="editor-inp mono"
+                  type="number" min="0" max="100" step="0.01"
+                  placeholder="—"
+                  value={a.yieldPct != null ? String(a.yieldPct) : ""}
+                  onChange={e => onUpdateYield(a.ticker, e.target.value)}
+                  aria-label={`Annual yield percent for ${a.ticker}`}
+                />
+                <span className="div-edit-pct">%</span>
+              </span>
+              <label className="div-edit-ucits">
+                <input
+                  type="checkbox"
+                  checked={!!a.ucits}
+                  onChange={e => onUpdateYield(a.ticker, a.yieldPct, e.target.checked)}
+                  aria-label={`${a.ticker} is an EU UCITS fund`}
+                />
+                UCITS
+              </label>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BENCH_STATUS_TEXT = {
+  no_api_key: "No market-data API key is set on the server, so historical prices can't be fetched.",
+  symbol_unresolved: "The data provider returned no series for this benchmark's symbol.",
+  empty_series: "The data provider returned no usable monthly closes.",
+  fetch_failed: "The request for historical prices failed.",
+};
+
+function AnalyticsTab({ history, assets, cy, benchmark, benchLoading, onRefreshBenchmark, onSetBenchmarkKey, onUpdateYield }) {
+  const all    = useMemo(() => buildMonthlySeries(history, assets, "all"), [history, assets]);
+  const crypto = useMemo(() => buildMonthlySeries(history, assets, "crypto"), [history, assets]);
+  const rest   = useMemo(() => buildMonthlySeries(history, assets, "rest"), [history, assets]);
+  const contribs = useMemo(() => monthlyContributions(history, "all"), [history]);
+
+  const benchKey = benchmark?.key || "VWCE";
+  const benchName = BENCHMARK_OPTIONS.find(o => o.key === benchKey)?.label || benchKey;
+  const bench = useMemo(
+    () => (benchmark?.closes ? benchmarkSeries(all, benchmark.closes) : null),
+    [all, benchmark?.closes],
+  );
+  const heroSeries = bench?.points || all;
+
+  const irrAnnual = useMemo(() => seriesIrr(all), [all]);
   const last = all[all.length - 1];
   const pnlPct = last && last.invested > 0 ? (last.pnl / last.invested) * 100 : null;
-  const totalContrib = contribs.reduce((s, c) => s + c.amount, 0);
+  const totalContrib = contribs.reduce((s, c) => s + (c.amount || 0), 0);
+  const benchLast = heroSeries[heroSeries.length - 1]?.benchmark ?? null;
 
   if (!all.length) {
     return (
@@ -2281,7 +2820,7 @@ function AnalyticsTab({ history, assets, cy }) {
         <Sh title="Analytics" subtitle="Progress over time"/>
         <div className="empty-state" style={{ marginTop:40 }}>
           <Icon name="barChart" style={{ width:40, height:40, color:"var(--text3)", marginBottom:12 }}/>
-          <p>No data to chart yet.<br/>Lock in a month on the Plan tab, or backfill past months via Settings → Data → Restore Backup.</p>
+          <p>No data to chart yet.<br/>Lock in a month on the Plan tab, or backfill past months from Settings → Data.</p>
         </div>
       </>
     );
@@ -2307,13 +2846,59 @@ function AnalyticsTab({ history, assets, cy }) {
           </strong>
         </div>
         <div className="viz-kpi">
-          <span>Months tracked</span>
-          <strong className="mono">{history.length}</strong>
+          <span>Return (IRR)</span>
+          <strong className="mono" style={{ color: irrAnnual == null ? "var(--text3)" : irrAnnual >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
+            {irrAnnual != null ? `${irrAnnual >= 0 ? "+" : "−"}${Math.abs(irrAnnual * 100).toFixed(1)}%` : "—"}
+          </strong>
         </div>
       </div>
 
       <div className="viz-main">
-        <ProgressChart series={all} cy={cy}/>
+        <div className="viz-main-head">
+          <div className="viz-main-title">Portfolio against {benchName}</div>
+          <div className="viz-bench-ctl">
+            <select
+              className="viz-bench-sel"
+              value={benchKey}
+              onChange={e => onSetBenchmarkKey(e.target.value)}
+              aria-label="Benchmark instrument"
+            >
+              {BENCHMARK_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            <button className="btn-ghost sm" onClick={() => onRefreshBenchmark(benchKey)} disabled={benchLoading}>
+              <Icon name="refresh" style={{ width:12, height:12 }}/>{benchLoading ? "Loading" : benchmark?.closes ? "Update" : "Load prices"}
+            </button>
+          </div>
+        </div>
+
+        <ProgressChart series={heroSeries} cy={cy} benchLabel={bench ? benchName : null}/>
+
+        {bench && benchLast != null && last && (
+          <div className={`viz-verdict ${last.value >= benchLast ? "ahead" : "behind"}`}>
+            <Icon name={last.value >= benchLast ? "trendUp" : "warning"} style={{ width:14, height:14, flexShrink:0 }}/>
+            <span>
+              Your picks are <strong>{last.value >= benchLast ? "ahead of" : "behind"} {benchName}</strong> by{" "}
+              <strong className="mono">{fmtEur(Math.abs(last.value - benchLast), cy)}</strong>
+              {last.invested > 0 && ` (${((Math.abs(last.value - benchLast) / last.invested) * 100).toFixed(1)}% of money invested)`}
+              {" "}— same contributions, same dates, all into {benchName} instead.
+            </span>
+          </div>
+        )}
+
+        {bench && !bench.complete && (
+          <div className="viz-note-row">
+            {bench.missing} month{bench.missing === 1 ? "" : "s"} had no benchmark price, so those contributions bought
+            nothing in the comparison. Prices are never interpolated — the line understates the benchmark rather than guessing.
+          </div>
+        )}
+
+        {!benchmark?.closes && (
+          <div className="viz-note-row">
+            {benchmark?.status && BENCH_STATUS_TEXT[benchmark.status]
+              ? BENCH_STATUS_TEXT[benchmark.status]
+              : `Load ${benchName} monthly closes to see what the same contributions would have been worth in it.`}
+          </div>
+        )}
       </div>
 
       <div className="viz-bucket-grid">
@@ -2321,17 +2906,26 @@ function AnalyticsTab({ history, assets, cy }) {
         <BucketCard title="Everything else" subtitle="ETFs, stocks" series={rest} cy={cy}/>
       </div>
 
+      <div className="viz-bucket-grid one">
+        <DividendCard assets={assets} cy={cy} onUpdateYield={onUpdateYield}/>
+      </div>
+
       {contribs.length > 0 && (
         <>
-          <Sh title="Month by month" subtitle={`${fmtEur(totalContrib, cy)} contributed across ${contribs.length} locked-in month${contribs.length === 1 ? "" : "s"}`}/>
+          <Sh title="Month by month" subtitle={`${fmtEur(totalContrib, cy)} contributed across ${contribs.length} recorded month${contribs.length === 1 ? "" : "s"}`}/>
           <div className="viz-table" role="table">
             <div className="viz-tr viz-th" role="row">
               <span>Month</span><span>Contributed</span><span>Value</span><span>Invested</span><span>P&amp;L</span>
             </div>
             {all.slice(0, contribs.length).map((p, i) => (
               <div className="viz-tr" role="row" key={i}>
-                <span>{vizTick(p)} <span className="viz-tr-sub">{p.label}</span></span>
-                <span className="mono">{contribs[i] ? fmtEur(contribs[i].amount, cy) : "—"}</span>
+                <span>
+                  {vizTick(p)}
+                  {p.backfilled
+                    ? <span className="viz-tr-sub" title="Entered by hand from a past statement">backfilled</span>
+                    : <span className="viz-tr-sub">{p.label}</span>}
+                </span>
+                <span className="mono">{contribs[i]?.amount != null ? fmtEur(contribs[i].amount, cy) : "—"}</span>
                 <span className="mono">{fmtEur(p.value, cy)}</span>
                 <span className="mono">{fmtEur(p.invested, cy)}</span>
                 <span className="mono" style={{ color: p.pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>
@@ -2512,7 +3106,7 @@ function CatAllocRow({ cat, color, assets, currentPct, targetTotal, onSetTarget 
   );
 }
 
-function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onUpdateCash, onUpdateDcaRule, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel }) {
+function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdateProjection, onUpdateAsset, onAddAsset, onRemoveAsset, onNormalize, onExportJSON, onExportCSV, onImport, onImportBrokerCsv, onImportPdf, onReset, targetSum, targetOk, showToast, liveEnabled, onToggleLive, liveRefreshSec, onUpdateLiveRefresh, driftThreshold, onUpdateDriftThreshold, alertsEnabled, onToggleAlerts, brokerImportLog = [], onUpdateIncome, onUpdateCash, onUpdateDcaRule, onAddScheduleEntry, onRemoveScheduleEntry, onApplyScheduledDca, liveModel, onAddBackfillMonth, onRemoveHistoryEntry, onUpdateReview }) {
   const [section, setSection] = useState("general");
   const [assetsView, setAssetsView] = useState("assets"); // "assets" | "categories"
   const [localDca, setLocalDca] = useState(String(state.dca));
@@ -2890,6 +3484,16 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdatePro
               )}
             </div>
 
+            <BackfillSection
+              history={state.history}
+              cy={CURRENCY_SYMBOL}
+              onAddMonth={onAddBackfillMonth}
+              onRemoveMonth={onRemoveHistoryEntry}
+              showToast={showToast}
+            />
+
+            <ReviewSection review={state.review} onUpdateReview={onUpdateReview} showToast={showToast}/>
+
             <div className="data-footer-note">
               <Icon name="info" style={{ width:13, height:13, flexShrink:0, marginTop:1 }}/>
               <span>Live quotes are fetched through your serverless proxy to protect API keys. Portfolio data still stays local by default. <strong>Export regularly</strong> to avoid data loss.</span>
@@ -2897,6 +3501,202 @@ function SettingsModal({ state, onClose, onUpdateDca, onUpdateTheme, onUpdatePro
           </div>
         )}
 
+      </div>
+    </div>
+  );
+}
+
+// ─── BACKFILL PAST MONTHS ─────────────────────────────────────
+// History used to start the day the app did. This adds months from before that, taken
+// off a broker statement. A backfilled month stores portfolio totals only — reconstructing
+// per-asset rows from a statement summary would mean inventing numbers, so it doesn't.
+function lastDayOfMonthISO(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m) return null;
+  // Day 0 of the following month is the last day of this one. Noon UTC keeps the date
+  // stable regardless of the reader's timezone.
+  return new Date(Date.UTC(y, m, 0, 12, 0, 0)).toISOString();
+}
+
+function BackfillSection({ history, cy, onAddMonth, onRemoveMonth, showToast }) {
+  const [month, setMonth] = useState("");
+  const [contributed, setContributed] = useState("");
+  const [value, setValue] = useState("");
+  const [invested, setInvested] = useState("");
+  const [cryptoValue, setCryptoValue] = useState("");
+  const [cryptoInvested, setCryptoInvested] = useState("");
+  const [investedTouched, setInvestedTouched] = useState(false);
+
+  const backfilled = useMemo(
+    () => (history || []).filter(h => h.backfilled).sort((a, b) => a.completedAt.localeCompare(b.completedAt)),
+    [history],
+  );
+
+  // Everything already invested as of the month before this one, so "invested to date"
+  // starts from the right place instead of from zero.
+  const priorInvested = useMemo(() => {
+    if (!month) return 0;
+    const prior = (history || [])
+      .filter(h => h.completedAt && h.completedAt.slice(0, 7) < month)
+      .sort((a, b) => a.completedAt.localeCompare(b.completedAt))
+      .pop();
+    const point = prior ? historyEntryPoint(prior, "all") : null;
+    return point ? point.invested : 0;
+  }, [history, month]);
+
+  const suggestedInvested = Math.round((priorInvested + (parseFloat(contributed) || 0)) * 100) / 100;
+  const investedValue = investedTouched && invested !== "" ? parseFloat(invested) : suggestedInvested;
+  const duplicate = month && (history || []).some(h => h.completedAt?.slice(0, 7) === month);
+  const valueNum = parseFloat(value);
+  const canAdd = !!month && !duplicate && isFinite(valueNum) && valueNum >= 0 && isFinite(investedValue) && investedValue >= 0;
+
+  function reset() {
+    setMonth(""); setContributed(""); setValue(""); setInvested("");
+    setCryptoValue(""); setCryptoInvested(""); setInvestedTouched(false);
+  }
+
+  function submit() {
+    const completedAt = lastDayOfMonthISO(month);
+    if (!completedAt || !canAdd) return;
+    const cv = parseFloat(cryptoValue);
+    const ci = parseFloat(cryptoInvested);
+    const label = new Date(completedAt).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+    onAddMonth({
+      label,
+      completedAt,
+      backfilled: true,
+      contributed: parseFloat(contributed) || 0,
+      totals: {
+        value: valueNum,
+        invested: investedValue,
+        ...(isFinite(cv) && cv >= 0 ? { cryptoValue: cv, ...(isFinite(ci) && ci >= 0 ? { cryptoInvested: ci } : {}) } : {}),
+      },
+    });
+    showToast(`${label} added to history.`);
+    reset();
+  }
+
+  return (
+    <div className="settings-group" style={{ marginTop:20 }}>
+      <div className="settings-group-label">Backfill past months</div>
+      <div className="settings-card">
+        <div className="bf-intro">
+          Add a month from before you started tracking, straight off a {PLATFORM_NAME} monthly
+          statement. Only portfolio totals are stored — per-asset detail isn&apos;t reconstructed,
+          because a statement summary can&apos;t supply it honestly.
+        </div>
+
+        <div className="bf-grid">
+          <label className="bf-field">
+            <span>Month</span>
+            <input className="editor-inp mono" type="month" value={month} onChange={e => setMonth(e.target.value)}/>
+          </label>
+          <label className="bf-field">
+            <span>Contributed ({cy})</span>
+            <input className="editor-inp mono" type="number" min="0" step="1" placeholder="260"
+              value={contributed} onChange={e => setContributed(e.target.value)}/>
+          </label>
+          <label className="bf-field">
+            <span>Value at month end ({cy})</span>
+            <input className="editor-inp mono" type="number" min="0" step="0.01" placeholder="1,240"
+              value={value} onChange={e => setValue(e.target.value)}/>
+          </label>
+          <label className="bf-field">
+            <span>Invested to date ({cy})</span>
+            <input className="editor-inp mono" type="number" min="0" step="0.01"
+              placeholder={String(suggestedInvested)}
+              value={investedTouched ? invested : (month ? String(suggestedInvested) : "")}
+              onChange={e => { setInvestedTouched(true); setInvested(e.target.value); }}/>
+          </label>
+          <label className="bf-field">
+            <span>Crypto value <em>(optional)</em></span>
+            <input className="editor-inp mono" type="number" min="0" step="0.01" placeholder="—"
+              value={cryptoValue} onChange={e => setCryptoValue(e.target.value)}/>
+          </label>
+          <label className="bf-field">
+            <span>Crypto invested <em>(optional)</em></span>
+            <input className="editor-inp mono" type="number" min="0" step="0.01" placeholder="—"
+              value={cryptoInvested} onChange={e => setCryptoInvested(e.target.value)}/>
+          </label>
+        </div>
+
+        <div className="bf-actions">
+          <span className="bf-hint">
+            {duplicate
+              ? <span style={{ color:"var(--accent-amber)" }}>That month is already in your history.</span>
+              : "Leave the crypto boxes empty and the crypto/rest split simply isn't drawn for that month."}
+          </span>
+          <button className="btn-primary sm" onClick={submit} disabled={!canAdd}>
+            <Icon name="check" style={{ width:13, height:13 }}/>Add month
+          </button>
+        </div>
+
+        {backfilled.length > 0 && (
+          <>
+            <SettingDivider/>
+            <div className="bf-list">
+              {backfilled.map(h => (
+                <div key={h.completedAt} className="bf-list-row">
+                  <span className="bf-list-m">{h.label}</span>
+                  <span className="mono bf-list-v">{cy}{Math.round(h.totals.value).toLocaleString()}</span>
+                  <span className="mono bf-list-i">{cy}{Math.round(h.totals.invested).toLocaleString()} in</span>
+                  <button className="icon-btn sm" onClick={() => onRemoveMonth(h.completedAt)} aria-label={`Remove ${h.label}`}>
+                    <Icon name="trash" style={{ width:13, height:13 }}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReviewSection({ review, onUpdateReview, showToast }) {
+  const status = reviewStatus(review?.lastReviewedAt, review?.intervalMonths);
+  return (
+    <div className="settings-group" style={{ marginTop:20 }}>
+      <div className="settings-group-label">Portfolio review</div>
+      <div className="settings-card">
+        <div className="data-action-row">
+          <div className="data-action-info">
+            <div className="setting-title">Review cadence</div>
+            <div className="setting-desc">
+              Your plan calls for a periodic review. The app reminds you when one is due — drift
+              alerts are continuous and answer a different question.
+            </div>
+          </div>
+          <select
+            className="viz-bench-sel"
+            value={review?.intervalMonths ?? 3}
+            onChange={e => onUpdateReview({ intervalMonths: parseInt(e.target.value, 10) })}
+            aria-label="Review interval in months"
+          >
+            <option value={1}>Monthly</option>
+            <option value={3}>Quarterly</option>
+            <option value={6}>Twice a year</option>
+            <option value={12}>Yearly</option>
+          </select>
+        </div>
+        <SettingDivider/>
+        <div className="data-action-row">
+          <div className="data-action-info">
+            <div className="setting-title">Last review</div>
+            <div className="setting-desc">
+              {review?.lastReviewedAt
+                ? <>Logged {new Date(review.lastReviewedAt).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })}
+                    {status.due && <> · next due {status.due.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })}</>}</>
+                : "Never logged."}
+            </div>
+          </div>
+          <button
+            className="btn-ghost"
+            onClick={() => { onUpdateReview({ lastReviewedAt: new Date().toISOString() }); showToast("Review logged."); }}
+          >
+            <Icon name="check" style={{ width:14, height:14 }}/>Mark reviewed
+          </button>
+        </div>
       </div>
     </div>
   );
