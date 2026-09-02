@@ -252,8 +252,6 @@
 .viz-main-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
 .viz-main-title { font-size:14.5px; font-weight:700; color:var(--text); }
 .viz-bench-ctl { display:flex; align-items:center; gap:8px; }
-.viz-bench-sel { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:9px; padding:5px 9px; font-size:12.5px; font-family:inherit; font-weight:600; cursor:pointer; }
-.viz-bench-sel:focus-visible { outline:2px solid var(--accent-indigo); outline-offset:1px; }
 
 .viz-verdict { display:flex; align-items:flex-start; gap:9px; margin-top:10px; padding:10px 13px; border-radius:11px; font-size:12.5px; line-height:1.5; color:var(--text2); }
 .viz-verdict.ahead  { background:rgba(52,211,153,.08); border:1px solid rgba(52,211,153,.22); }
@@ -281,9 +279,10 @@
 .div-edit { display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:8px 18px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
 .div-edit-row { display:grid; grid-template-columns:52px 96px 1fr; align-items:center; gap:9px; font-size:12.5px; }
 .div-edit-t { font-weight:700; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--text2); }
-.div-edit-inp { display:flex; align-items:center; gap:5px; min-width:0; }
-.div-edit-inp .editor-inp { flex:1; width:100%; min-width:0; text-align:right; }
-.div-edit-pct { font-size:11px; color:var(--text4); flex-shrink:0; }
+.div-edit-inp { min-width:0; }
+.div-edit-inp .editor-inp { flex:1; width:100%; min-width:0; font-size:13px; }
+.div-edit-inp .editor-sym { padding:0 8px 0 2px; font-size:11.5px; }
+
 .div-edit-ucits { display:flex; align-items:center; gap:5px; font-size:10.5px; font-weight:700; color:var(--text4); cursor:pointer; justify-self:start; }
 
 @media (max-width:600px) {
@@ -329,6 +328,8 @@
 .d-src { display:inline-block; margin-left:7px; padding:1px 6px; border-radius:5px; font-size:9.5px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; vertical-align:1px; cursor:help; }
 .d-src-off { background:rgba(239,68,68,.14); color:var(--accent-red); }
 .d-src-manual { background:rgba(245,158,11,.14); color:var(--accent-amber); }
+/* the same badge, shown inline inside an explanation */
+.d-src-inline { display:inline-block; padding:1px 5px; border-radius:5px; font-size:9.5px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; background:rgba(239,68,68,.14); color:var(--accent-red); }
 
 /* ── DEPLOY IDLE CASH ── */
 .deploy-panel { border:1px solid rgba(16,185,129,.25); background:linear-gradient(180deg, rgba(16,185,129,.07), rgba(16,185,129,.02)); border-radius:16px; padding:16px 18px; margin-bottom:22px; }
@@ -351,13 +352,43 @@
   .deploy-row-bar { display:none; }
 }
 
+/* ── HOW-TO DISCLOSURES ── */
+.howto { border:1px solid var(--border); border-radius:12px; background:var(--surface); margin:12px 0 0; overflow:hidden; }
+.howto[open] { background:var(--surface2); }
+.howto-sum { display:flex; align-items:center; gap:9px; padding:9px 13px; cursor:pointer; list-style:none; user-select:none; transition:background .15s; }
+.howto-sum::-webkit-details-marker { display:none; }
+.howto-sum:hover { background:var(--surface2); }
+.howto-sum:focus-visible { outline:2px solid var(--accent-indigo); outline-offset:-2px; border-radius:12px; }
+.howto-ico { width:14px; height:14px; color:var(--accent-indigo); flex-shrink:0; }
+.howto-title { font-size:12.5px; font-weight:700; color:var(--text2); flex:1; }
+.howto-chev { font-size:11px; color:var(--text4); transition:transform .2s; }
+.howto[open] .howto-chev { transform:rotate(180deg); }
+/* Capped measure: past roughly 75 characters a line is measurably harder to track back to
+   the start of the next one, and these panels sit in a very wide container. */
+.howto-body { padding:12px 15px 14px 36px; max-width:78ch; font-size:12.5px; line-height:1.62; color:var(--text2); border-top:1px solid var(--border); }
+.howto-body p { margin:0 0 9px; }
+.howto-body p:last-child { margin-bottom:0; }
+.howto-body strong { color:var(--text); font-weight:700; }
+.howto-body code { font-family:'JetBrains Mono',monospace; font-size:11.5px; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:1px 5px; color:var(--text); }
+.howto-steps { margin:0 0 10px; padding-left:18px; display:flex; flex-direction:column; gap:5px; }
+.howto-steps li { padding-left:2px; }
+.howto-tip { display:flex; align-items:flex-start; gap:7px; margin:10px 0 0; padding:8px 11px; border-radius:9px; background:rgba(99,102,241,.09); border:1px solid rgba(99,102,241,.2); color:var(--text2); }
+.howto-tip.warn { background:rgba(245,158,11,.09); border-color:rgba(245,158,11,.22); }
+.howto-tip svg { color:var(--accent-indigo); }
+.howto-tip.warn svg { color:var(--accent-amber); }
+@media (prefers-reduced-motion:reduce) { .howto-chev { transition:none; } }
+@media (max-width:600px) { .howto-body { padding-left:15px; } }
+
 /* ── BACKFILL PAST MONTHS ── */
 .bf-intro { font-size:12.5px; line-height:1.55; color:var(--text2); margin-bottom:14px; }
-.bf-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.bf-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 12px; }
 .bf-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
-.bf-field > span { font-size:10.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--text4); }
-.bf-field > span em { font-style:normal; font-weight:600; letter-spacing:0; text-transform:none; opacity:.75; }
-.bf-field .editor-inp { width:100%; }
+.bf-field > span:first-child { font-size:10.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--text4); }
+.bf-field > span:first-child i { font-style:normal; font-weight:600; letter-spacing:0; text-transform:none; opacity:.7; }
+.bf-help { font-style:normal; font-size:10.5px; line-height:1.35; color:var(--text4); }
+.bf-field .editor-inp-wrap { width:100%; }
+.bf-field .editor-inp { width:100%; min-width:0; }
+.bf-field > .editor-inp { width:100%; }
 .bf-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:14px; }
 .bf-hint { font-size:11.5px; line-height:1.5; color:var(--text4); flex:1; min-width:200px; }
 .bf-list { display:flex; flex-direction:column; gap:5px; }
@@ -475,11 +506,29 @@
 .editor-ticker { font-size:13px; font-weight:700; color:var(--text); }
 .editor-cat { font-size:11px; color:var(--text4); margin-top:1px; }
 .editor-inp-wrap { display:flex; align-items:center; background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; overflow:hidden; transition:border-color .2s; }
-.editor-inp-wrap:focus-within { border-color:rgba(99,102,241,.5); }
+.editor-inp-wrap:focus-within { border-color:rgba(99,102,241,.55); box-shadow:0 0 0 3px rgba(99,102,241,.18); }
 .live-badge-dot { width:6px; height:6px; margin-left:7px; border-radius:50%; background:var(--accent-green); box-shadow:0 0 5px rgba(16,185,129,.7); flex-shrink:0; }
 .editor-sym { padding:0 7px; font-size:13px; color:var(--text3); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
-.editor-inp { background:transparent; border:none; outline:none; padding:8px 8px 8px 2px; font-size:14px; color:var(--text); width:90px; }
-.editor-inp::-webkit-inner-spin-button,.editor-inp::-webkit-outer-spin-button { opacity:.4; }
+/* One field style for the whole app. `.editor-inp` is self-sufficient: it carries its own
+   background, border, padding and focus ring, so it looks right standalone. Inside
+   `.editor-inp-wrap` the wrapper owns that chrome (it also holds the currency/percent
+   affix), so the input hands it back. Before this, every unwrapped use rendered as an
+   invisible field whose only visible affordance was the native spinner. */
+.editor-inp { background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; outline:none; padding:7px 10px; font-size:14px; line-height:1.3; color:var(--text); width:90px; min-height:36px; transition:border-color .18s, box-shadow .18s; }
+.editor-inp::placeholder { color:var(--text4); opacity:1; }
+.editor-inp:focus-visible { border-color:rgba(99,102,241,.55); box-shadow:0 0 0 3px rgba(99,102,241,.18); }
+.editor-inp:disabled { opacity:.5; cursor:not-allowed; }
+.editor-inp-wrap .editor-inp { background:transparent; border:none; box-shadow:none; min-height:0; padding:8px 8px 8px 2px; }
+
+/* Numbers are right-aligned so figures in a column line up on the decimal, and the native
+   spin buttons are removed: they are ~12px hit targets, render differently in every
+   browser, and let a stray scroll silently change a value. type=number is kept for the
+   numeric keyboard on mobile and for min/max validation. */
+input[type=number].editor-inp { text-align:right; appearance:textfield; -moz-appearance:textfield; }
+input[type=number].editor-inp::-webkit-inner-spin-button,
+input[type=number].editor-inp::-webkit-outer-spin-button { -webkit-appearance:none; appearance:none; margin:0; }
+input[type=month].editor-inp { text-align:left; }
+.editor-inp::-webkit-calendar-picker-indicator { filter:invert(.6); cursor:pointer; }
 .editor-footer { display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
 .editor-total { display:flex; align-items:center; gap:7px; font-size:14px; color:var(--text3); }
 .editor-total strong { color:var(--text); }
@@ -534,7 +583,7 @@
 .live-toggle { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--text2); }
 .live-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .live-label { font-size:12px; color:var(--text3); }
-.live-refresh-inp { width:58px; border:1px solid var(--border2); border-radius:8px; background:var(--surface2); color:var(--text); padding:5px 8px; }
+.live-refresh-inp { width:64px; }
 .live-error { font-size:12px; color:var(--accent-red); background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.25); border-radius:9px; padding:7px 9px; }
 .live-meta { font-size:11px; color:var(--text4); }
 .live-last-updated { font-size:11px; color:var(--text4); margin-top:4px; letter-spacing:.01em; }
@@ -620,6 +669,8 @@
 .target-sum-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:20px; font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; }
 .target-sum-pill.ok { background:rgba(16,185,129,.1); color:var(--accent-green); border:1px solid rgba(16,185,129,.25); }
 .target-sum-pill.err { background:rgba(239,68,68,.1); color:var(--accent-red); border:1px solid rgba(239,68,68,.25); }
+.target-sum-pill.mid { background:var(--surface2); color:var(--text2); border:1px solid var(--border2); }
+.target-sum-pill.warn { background:rgba(245,158,11,.1); color:var(--accent-amber); border:1px solid rgba(245,158,11,.25); }
 .ok-text { color:var(--accent-green); }
 .err-text { color:var(--accent-red); }
 
@@ -635,8 +686,19 @@
 .asset-name-cell { display:flex; align-items:center; gap:9px; min-width:0; }
 .asset-text-inp { background:transparent; border:none; outline:none; color:var(--text); font-family:inherit; display:block; line-height:1.35; }
 .asset-text-inp:focus { background:rgba(99,102,241,.1); border-radius:4px; padding:1px 5px; }
-.asset-select { background:var(--input-bg); border:1px solid var(--border2); border-radius:8px; color:var(--text2); font-size:12px; font-family:inherit; padding:6px 8px; outline:none; cursor:pointer; transition:border-color .18s; }
-.asset-select:focus { border-color:rgba(99,102,241,.5); outline:none; }
+/* Native select chrome differs on every platform; one appearance:none + inline chevron
+   keeps it consistent and lets the focus ring match every other field. */
+.select-inp, .asset-select {
+  appearance:none; -webkit-appearance:none;
+  background:var(--input-bg) no-repeat right 9px center;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b93a7' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border:1px solid var(--border2); border-radius:8px; color:var(--text2);
+  font-size:12.5px; font-family:inherit; font-weight:600; padding:7px 28px 7px 10px;
+  min-height:36px; outline:none; cursor:pointer; transition:border-color .18s, box-shadow .18s;
+}
+.select-inp { color:var(--text); }
+.select-inp:focus-visible, .asset-select:focus-visible { border-color:rgba(99,102,241,.55); box-shadow:0 0 0 3px rgba(99,102,241,.18); }
+.asset-select:focus { outline:none; }
 
 /* ── Category allocation table ── */
 .cat-alloc-table { display:flex; flex-direction:column; gap:6px; }

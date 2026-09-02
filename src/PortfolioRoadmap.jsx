@@ -135,6 +135,36 @@ function PlatformBadge() {
   return <span className="platform-badge">{PLATFORM_NAME}</span>;
 }
 
+// ─── HOW-TO DISCLOSURE ────────────────────────────────────────
+// Collapsed by default, one per feature. Built on native <details>/<summary> rather than
+// useState: it gets keyboard operation, the correct ARIA semantics, and find-in-page
+// expansion for free, and it costs no render on the pages that never open it.
+function HowTo({ title = "How to read this", children }) {
+  return (
+    <details className="howto">
+      <summary className="howto-sum">
+        <Icon name="info" className="howto-ico"/>
+        <span className="howto-title">{title}</span>
+        <span className="howto-chev" aria-hidden="true">▾</span>
+      </summary>
+      <div className="howto-body">{children}</div>
+    </details>
+  );
+}
+
+// A short list of numbered steps — "do this, then this".
+function HowToSteps({ children }) { return <ol className="howto-steps">{children}</ol>; }
+
+// One highlighted line: the thing that saves you from a wrong reading.
+function HowToTip({ children, warn = false }) {
+  return (
+    <p className={`howto-tip ${warn ? "warn" : ""}`}>
+      <Icon name={warn ? "warning" : "zap"} style={{ width:13, height:13, flexShrink:0, marginTop:1 }}/>
+      <span>{children}</span>
+    </p>
+  );
+}
+
 // ─── CLIPBOARD UTILITY (with fallback) ────────────────────────
 function copyToClipboard(text) {
   // Modern API — works on HTTPS
@@ -723,6 +753,18 @@ function App() {
     setState(s => ({ ...s, savingsPlan: sanitizeSavingsPlan({ rows, monthly, setAt: new Date().toISOString() }) }));
     showToast("Savings plan recorded — the app will flag it when it drifts.");
   }, [showToast]);
+
+  // A focused type=number input eats the scroll wheel and silently changes its value —
+  // a classic way to corrupt a figure you were only scrolling past. Blur it instead and
+  // let the page scroll.
+  useEffect(() => {
+    const onWheel = (e) => {
+      const el = document.activeElement;
+      if (el && el.tagName === "INPUT" && el.type === "number" && el === e.target) el.blur();
+    };
+    document.addEventListener("wheel", onWheel, { passive: true });
+    return () => document.removeEventListener("wheel", onWheel);
+  }, []);
 
   const cashFree = useMemo(() => freeCash(state.cash), [state.cash]);
   const netWorth = total + (state.cash?.available || 0);
@@ -1410,6 +1452,21 @@ function App() {
           );
         })()}
 
+        <HowTo title="What these four numbers mean">
+          <p><strong>Portfolio</strong> is what your holdings are worth right now. <strong>Monthly DCA</strong> is what
+          you contribute each month — tied to a percentage of income if you switched that rule on.</p>
+          <p><strong>Idle Cash</strong> is money sitting in the account doing nothing: your available balance minus
+          anything already committed to savings-plan orders, minus your buffer. It replaced a projection tile because
+          it is the only one of the four that asks you to do something today.</p>
+          <p><strong>Return (IRR)</strong> is your money-weighted annual return. It is not the same as the
+          &ldquo;since buy&rdquo; percentage under Portfolio: that one ignores <em>when</em> each euro arrived, so it
+          flatters a portfolio whose recent contributions haven&apos;t had time to work. IRR accounts for the dates.</p>
+          <HowToTip>The ring around Idle Cash fills as idle cash approaches one month&apos;s contribution. A full amber
+          ring means you are holding back a whole month of investing.</HowToTip>
+          <HowToTip warn>IRR needs at least two months of history and reads wildly in the first few — a 3% gain over
+          six weeks annualises to a number that means very little. Trust it from about six months on.</HowToTip>
+        </HowTo>
+
         {review.state !== "ok" && (
           <div className={`banner ${review.state === "overdue" ? "banner-warn" : "banner-info"}`} role={review.state === "overdue" ? "alert" : "status"}>
             <Icon name={review.state === "overdue" ? "warning" : "calendar"} style={{ width:16, height:16, flexShrink:0 }}/>
@@ -1730,7 +1787,7 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
           <div className="live-controls">
             <span className="live-label">Refresh</span>
             <input
-              className="live-refresh-inp mono"
+              className="editor-inp mono live-refresh-inp"
               type="number"
               min="15"
               max="3600"
@@ -1855,6 +1912,26 @@ function OverviewTab({ sortedDrift, enriched, safetyBreach, cy, editOpen, setEdi
 
       {/* Current Drift — per-asset detail */}
       <Sh title="Current Drift" subtitle="Sorted by value, largest first"/>
+
+      <HowTo title="Where each value comes from, and when to distrust it">
+        <p>A row&apos;s value can reach you three ways, and the app labels the weak ones rather than letting them
+        look live:</p>
+        <HowToSteps>
+          <li><strong>Units × live price</strong> — the real thing. You get this once a unit count is set for the
+          position and its symbol resolves to a quote.</li>
+          <li><strong>Manual, nudged</strong> — no unit count, so the app takes the value you typed and moves it by
+          today&apos;s percentage change. Close enough day to day, wrong after a few weeks.</li>
+          <li><strong className="d-src-inline">no price</strong> — the symbol resolved to nothing at all. That row is
+          frozen at whatever you last entered.</li>
+        </HowToSteps>
+        <p>The banner above the list shows how old the last successful price fetch is. Anything over a few minutes
+        past your refresh interval is called out.</p>
+        <HowToTip>To upgrade a row to true live valuation, open <strong>Update Values</strong> below, or Settings →
+        Assets, and enter the unit count you actually hold. Everything downstream — drift, P&amp;L, the allocator —
+        gets sharper at once.</HowToTip>
+        <HowToTip warn>A <strong>no price</strong> badge that never clears usually means the ticker symbol needs
+        fixing rather than the data provider being down. European ETFs are the usual culprits.</HowToTip>
+      </HowTo>
 
       {freshness.stale && (
         <div className="banner banner-warn" role="alert">
@@ -2077,6 +2154,24 @@ function SavingsPlanCard({ assets, total, dca, cy, plan, onSavePlan, showToast }
           </div>
         ))}
       </div>
+
+      <HowTo title="How to use this with Trade Republic">
+        <p>Trade Republic executes a <strong>fixed</strong> split every month — the same euros into the same tickers
+        until you change it. This app allocates <strong>gap-weighted</strong>: it buys whatever is furthest below
+        target, which moves as prices move. Those two drift apart, and this card is the bridge.</p>
+        <HowToSteps>
+          <li>Press <strong>Copy</strong> to take the list above.</li>
+          <li>In {PLATFORM_NAME}, set one savings plan per ticker for those amounts, all on the same execution day.</li>
+          <li>Come back and press <strong>I set this up</strong>. The app records what you actually configured.</li>
+          <li>Whenever the badge turns <strong>re-tune</strong>, repeat — the recorded split has fallen out of step.</li>
+        </HowToSteps>
+        <p>The right-hand column compares the proposal against your recorded plan: <strong>+{cy}29</strong> means
+        increase that plan, <strong>new</strong> means create one, <strong>stop</strong> means cancel it.</p>
+        <HowToTip>Re-tune roughly quarterly rather than monthly. Chasing the allocator every month means constant
+        fiddling in the broker for a fraction of a percent of drift.</HowToTip>
+        <HowToTip warn>The badge also flips when your monthly contribution changes — the old split still totals the
+        old amount, so the whole thing needs redoing, not just adjusting.</HowToTip>
+      </HowTo>
 
       <div className="sp-foot">
         {!stored
@@ -2747,6 +2842,24 @@ function DividendCard({ assets, cy, onUpdateYield }) {
             ))}
           </div>
 
+          <HowTo title="How this estimate is built, and where to find the yields">
+            <p>The app has no reliable free source for distribution yields, so you enter them and it does the
+            arithmetic. Press <strong>Yields</strong> above to edit them inline.</p>
+            <HowToSteps>
+              <li>Look up each holding&apos;s <strong>trailing 12-month distribution yield</strong> — the fund&apos;s
+              own factsheet, or the position page in {PLATFORM_NAME}.</li>
+              <li>Enter it as a percentage. <strong>Zero is a real answer</strong> for an accumulating ETF, which
+              reinvests internally and distributes nothing; leave the box empty only if you genuinely don&apos;t know.</li>
+              <li>Tick <strong>UCITS</strong> for EU/EEA-domiciled funds.</li>
+            </HowToSteps>
+            <p>That tick is what drives the tax column. A UCITS fund&apos;s distributions reach you whole; a US share
+            loses {US_WITHHOLDING_PCT}% at source before you ever see it, and that portion is gone for good.</p>
+            <HowToTip>Yield on portfolio is the honest headline: income measured against <em>everything</em> you own,
+            including the positions paying nothing.</HowToTip>
+            <HowToTip warn>This is a forward estimate at today&apos;s values, not a record of what you were paid.
+            Companies cut dividends, and fund distributions vary quarter to quarter.</HowToTip>
+          </HowTo>
+
           <div className="div-foot">
             An estimate from the yields entered below, at today&apos;s values. UCITS funds keep the whole
             distribution; US shares lose {US_WITHHOLDING_PCT}% at source.
@@ -2759,16 +2872,16 @@ function DividendCard({ assets, cy, onUpdateYield }) {
           {editable.map(a => (
             <label key={a.ticker} className="div-edit-row">
               <span className="div-edit-t">{a.ticker}</span>
-              <span className="div-edit-inp">
+              <span className="editor-inp-wrap div-edit-inp">
                 <input
                   className="editor-inp mono"
-                  type="number" min="0" max="100" step="0.01"
+                  type="number" inputMode="decimal" min="0" max="100" step="0.01"
                   placeholder="—"
                   value={a.yieldPct != null ? String(a.yieldPct) : ""}
                   onChange={e => onUpdateYield(a.ticker, e.target.value)}
                   aria-label={`Annual yield percent for ${a.ticker}`}
                 />
-                <span className="div-edit-pct">%</span>
+                <span className="editor-sym">%</span>
               </span>
               <label className="div-edit-ucits">
                 <input
@@ -2830,6 +2943,21 @@ function AnalyticsTab({ history, assets, cy, benchmark, benchLoading, onRefreshB
     <>
       <Sh title="Analytics" subtitle="Value against money actually invested, month by month"/>
 
+      <HowTo title="How to read these charts">
+        <p>Every chart on this page plots two euro lines against one scale. The <strong>solid blue</strong> line is
+        what the portfolio was worth. The <strong>dashed grey</strong> line is what you had put in by that point.
+        The gap between them is your unrealised profit or loss.</p>
+        <p>That gap is shaded <strong>per month</strong>, not once for the whole chart: a month that was under water
+        stays red even while you are in profit today. Hover anywhere to read the exact figures for that month.</p>
+        <p>Points come from months you locked in, plus any you backfilled, plus a final <strong>Now</strong> point
+        taken from your live portfolio. The two smaller charts split the same data into crypto and everything else,
+        because those two behave nothing alike and averaging them hides both.</p>
+        <HowToTip><strong>Return (IRR)</strong> above is money-weighted and annualised — it accounts for when each
+        contribution arrived, unlike a plain since-buy percentage.</HowToTip>
+        <HowToTip warn>A chart needs two points to draw. If a bucket is empty, that month had nothing recorded for
+        it — a backfilled month without a crypto figure, most likely.</HowToTip>
+      </HowTo>
+
       <div className="viz-kpis">
         <div className="viz-kpi">
           <span>Invested</span>
@@ -2858,7 +2986,7 @@ function AnalyticsTab({ history, assets, cy, benchmark, benchLoading, onRefreshB
           <div className="viz-main-title">Portfolio against {benchName}</div>
           <div className="viz-bench-ctl">
             <select
-              className="viz-bench-sel"
+              className="select-inp"
               value={benchKey}
               onChange={e => onSetBenchmarkKey(e.target.value)}
               aria-label="Benchmark instrument"
@@ -2891,6 +3019,23 @@ function AnalyticsTab({ history, assets, cy, benchmark, benchLoading, onRefreshB
             nothing in the comparison. Prices are never interpolated — the line understates the benchmark rather than guessing.
           </div>
         )}
+
+        <HowTo title="What the benchmark line is actually showing">
+          <p>It answers one question: <strong>what if every euro you contributed had gone into a single index fund
+          instead?</strong> Same amounts, same dates, no stock picking. The dotted amber line is that alternative
+          portfolio; where your blue line sits relative to it is what your selection has earned or cost you.</p>
+          <HowToSteps>
+            <li>Choose the benchmark from the dropdown — a global fund (VWCE) or US large-cap (CSPX).</li>
+            <li>Press <strong>Load prices</strong> once. Monthly closes are cached, so it is not a per-visit fetch.</li>
+            <li>Read the verdict line under the chart for the euro difference.</li>
+          </HowToSteps>
+          <p>Contributions buy benchmark units at that month&apos;s closing price and are never sold, which mirrors
+          how you actually invest.</p>
+          <HowToTip>This is the single most useful number on the page over multi-year spans — it is the only one that
+          tests whether picking individual positions is paying for itself.</HowToTip>
+          <HowToTip warn>Six months of it means nothing. Judge it over years, and remember a benchmark you are behind
+          may simply be riskier or more concentrated than what you hold.</HowToTip>
+        </HowTo>
 
         {!benchmark?.closes && (
           <div className="viz-note-row">
@@ -3590,33 +3735,54 @@ function BackfillSection({ history, cy, onAddMonth, onRemoveMonth, showToast }) 
           <label className="bf-field">
             <span>Month</span>
             <input className="editor-inp mono" type="month" value={month} onChange={e => setMonth(e.target.value)}/>
+            <em className="bf-help">Statement month</em>
           </label>
           <label className="bf-field">
-            <span>Contributed ({cy})</span>
-            <input className="editor-inp mono" type="number" min="0" step="1" placeholder="260"
-              value={contributed} onChange={e => setContributed(e.target.value)}/>
+            <span>Contributed</span>
+            <span className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" inputMode="decimal" min="0" step="1" placeholder="260"
+                value={contributed} onChange={e => setContributed(e.target.value)}/>
+            </span>
+            <em className="bf-help">Paid in that month</em>
           </label>
           <label className="bf-field">
-            <span>Value at month end ({cy})</span>
-            <input className="editor-inp mono" type="number" min="0" step="0.01" placeholder="1,240"
-              value={value} onChange={e => setValue(e.target.value)}/>
+            <span>Value at month end</span>
+            <span className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" inputMode="decimal" min="0" step="0.01" placeholder="1240"
+                value={value} onChange={e => setValue(e.target.value)}/>
+            </span>
+            <em className="bf-help">Closing portfolio value</em>
           </label>
           <label className="bf-field">
-            <span>Invested to date ({cy})</span>
-            <input className="editor-inp mono" type="number" min="0" step="0.01"
-              placeholder={String(suggestedInvested)}
-              value={investedTouched ? invested : (month ? String(suggestedInvested) : "")}
-              onChange={e => { setInvestedTouched(true); setInvested(e.target.value); }}/>
+            <span>Invested to date</span>
+            <span className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" inputMode="decimal" min="0" step="0.01"
+                placeholder={String(suggestedInvested)}
+                value={investedTouched ? invested : (month ? String(suggestedInvested) : "")}
+                onChange={e => { setInvestedTouched(true); setInvested(e.target.value); }}/>
+            </span>
+            <em className="bf-help">Running total — edit if wrong</em>
           </label>
           <label className="bf-field">
-            <span>Crypto value <em>(optional)</em></span>
-            <input className="editor-inp mono" type="number" min="0" step="0.01" placeholder="—"
-              value={cryptoValue} onChange={e => setCryptoValue(e.target.value)}/>
+            <span>Crypto value <i>optional</i></span>
+            <span className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" inputMode="decimal" min="0" step="0.01" placeholder="—"
+                value={cryptoValue} onChange={e => setCryptoValue(e.target.value)}/>
+            </span>
+            <em className="bf-help">Enables the crypto split</em>
           </label>
           <label className="bf-field">
-            <span>Crypto invested <em>(optional)</em></span>
-            <input className="editor-inp mono" type="number" min="0" step="0.01" placeholder="—"
-              value={cryptoInvested} onChange={e => setCryptoInvested(e.target.value)}/>
+            <span>Crypto invested <i>optional</i></span>
+            <span className="editor-inp-wrap">
+              <span className="editor-sym">{cy}</span>
+              <input className="editor-inp mono" type="number" inputMode="decimal" min="0" step="0.01" placeholder="—"
+                value={cryptoInvested} onChange={e => setCryptoInvested(e.target.value)}/>
+            </span>
+            <em className="bf-help">Defaults to the value above</em>
           </label>
         </div>
 
@@ -3630,6 +3796,26 @@ function BackfillSection({ history, cy, onAddMonth, onRemoveMonth, showToast }) 
             <Icon name="check" style={{ width:13, height:13 }}/>Add month
           </button>
         </div>
+
+        <HowTo title="Where to get these numbers, and what gets stored">
+          <p>Everything you need is on a {PLATFORM_NAME} monthly account statement. Work forwards from your first
+          month, one statement at a time.</p>
+          <HowToSteps>
+            <li><strong>Month</strong> — the statement&apos;s month. The entry is dated to its last day.</li>
+            <li><strong>Contributed</strong> — what you paid in that month.</li>
+            <li><strong>Value at month end</strong> — the closing portfolio value on the statement.</li>
+            <li><strong>Invested to date</strong> — total paid in since you started. Pre-filled from the running
+            total; override it if your first month already had money in it.</li>
+            <li><strong>Crypto value</strong> — optional. Supply it and that month appears in the crypto and
+            everything-else charts; leave it out and only the whole-portfolio line covers that month.</li>
+          </HowToSteps>
+          <p>A backfilled month stores those totals and nothing else. Per-asset rows are never reconstructed from a
+          summary, so no invented numbers reach the History tab or the drift calculations.</p>
+          <HowToTip>Order doesn&apos;t matter. Add months in any sequence — they are sorted by date before anything
+          reads them.</HowToTip>
+          <HowToTip warn>Don&apos;t estimate a value you can&apos;t find. A month left out simply isn&apos;t plotted;
+          a guessed one quietly corrupts every return figure that follows.</HowToTip>
+        </HowTo>
 
         {backfilled.length > 0 && (
           <>
@@ -3668,7 +3854,7 @@ function ReviewSection({ review, onUpdateReview, showToast }) {
             </div>
           </div>
           <select
-            className="viz-bench-sel"
+            className="select-inp"
             value={review?.intervalMonths ?? 3}
             onChange={e => onUpdateReview({ intervalMonths: parseInt(e.target.value, 10) })}
             aria-label="Review interval in months"
@@ -3678,6 +3864,23 @@ function ReviewSection({ review, onUpdateReview, showToast }) {
             <option value={6}>Twice a year</option>
             <option value={12}>Yearly</option>
           </select>
+        </div>
+        <SettingDivider/>
+        <div className="data-action-row" style={{ display:"block" }}>
+          <HowTo title="What a review is for, and what to actually do">
+            <p>Drift alerts fire continuously and answer &ldquo;is one position out of line right now?&rdquo;. A review
+            is the slower question: <strong>is the plan still the right plan?</strong> Both matter; neither replaces
+            the other.</p>
+            <HowToSteps>
+              <li>Open <strong>Analytics</strong> and check the portfolio against its benchmark.</li>
+              <li>Check the buckets — has crypto or tech quietly grown past what you meant to hold?</li>
+              <li>Confirm your contribution still matches your income rule.</li>
+              <li>Check the savings-plan card on the Plan tab for a <strong>re-tune</strong> badge.</li>
+              <li>Press <strong>Mark reviewed</strong> to log the date and reset the clock.</li>
+            </HowToSteps>
+            <HowToTip>Quarterly suits a monthly-contribution plan. Monthly reviews mostly invite tinkering; yearly
+            lets a drifting allocation run too long.</HowToTip>
+          </HowTo>
         </div>
         <SettingDivider/>
         <div className="data-action-row">
@@ -3781,6 +3984,7 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDcaR
               <span className="editor-sym">{cy}</span>
               <input className="editor-inp mono" type="number" min="0" max="1000000" step="50"
                 value={incomeDraft}
+                placeholder="0"
                 onChange={e => setIncomeDraft(e.target.value)}
                 onBlur={saveIncome}
                 onKeyDown={e => { if (e.key === "Enter") { saveIncome(); e.target.blur(); } }}
@@ -3789,17 +3993,20 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDcaR
           </SettingRow>
           <SettingDivider/>
           <SettingRow title="Label" desc="Optional context (e.g. role / employer)">
-            <input className="asset-text-inp" value={incomeLabel}
+            <input className="editor-inp" type="text" value={incomeLabel}
               onChange={e => setIncomeLabel(e.target.value.slice(0, 60))}
               onBlur={saveIncome}
               placeholder="e.g. Team Lead full-time"
-              style={{ width: 180, fontSize: 12 }} aria-label="Income label"/>
+              style={{ width: 190, fontSize: 12.5 }} aria-label="Income label"/>
           </SettingRow>
           {income > 0 && (
             <>
               <SettingDivider/>
               <SettingRow title="Savings Rate" desc={`${cy}${state.dca}/mo DCA ÷ ${cy}${income}/mo net income`}>
-                <div className={`target-sum-pill ${savingsPct >= 15 ? "ok" : "err"}`}>
+                {/* A savings rate is not pass/fail. Red said "error" against a deliberate,
+                    perfectly ordinary 10% rule; three bands describe it without judging it. */}
+                <div className={`target-sum-pill ${savingsPct >= 20 ? "ok" : savingsPct >= 10 ? "mid" : "warn"}`}
+                  title={savingsPct >= 20 ? "Strong" : savingsPct >= 10 ? "Typical" : "On the low side"}>
                   <Icon name="trendUp" style={{ width:13, height:13 }}/>
                   {savingsPct.toFixed(1)}%
                 </div>
@@ -3843,6 +4050,7 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDcaR
               <span className="editor-sym">{cy}</span>
               <input className="editor-inp mono" type="number" min="0" max="10000000" step="10"
                 value={cashDraft}
+                placeholder="0"
                 onChange={e => setCashDraft(e.target.value)}
                 onBlur={saveCash}
                 onKeyDown={e => { if (e.key === "Enter") { saveCash(); e.target.blur(); } }}
@@ -3855,6 +4063,7 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDcaR
               <span className="editor-sym">{cy}</span>
               <input className="editor-inp mono" type="number" min="0" max="10000000" step="10"
                 value={committedDraft}
+                placeholder="0"
                 onChange={e => setCommittedDraft(e.target.value)}
                 onBlur={saveCash}
                 onKeyDown={e => { if (e.key === "Enter") { saveCash(); e.target.blur(); } }}
@@ -3867,6 +4076,7 @@ function CashflowSection({ state, cy, onUpdateIncome, onUpdateCash, onUpdateDcaR
               <span className="editor-sym">{cy}</span>
               <input className="editor-inp mono" type="number" min="0" max="10000000" step="10"
                 value={bufferDraft}
+                placeholder="0"
                 onChange={e => setBufferDraft(e.target.value)}
                 onBlur={saveCash}
                 onKeyDown={e => { if (e.key === "Enter") { saveCash(); e.target.blur(); } }}

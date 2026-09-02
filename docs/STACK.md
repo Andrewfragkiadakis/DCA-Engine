@@ -72,6 +72,16 @@ npm run build    # production build into dist/
   measured container (ResizeObserver), so an 11px axis label is 11px in a wide
   chart and in a narrow card alike. A fixed `viewBox` scales text with the
   container and makes small charts illegible.
+- **One field style, applied everywhere.** `.editor-inp` is self-sufficient (background,
+  border, padding, focus ring) and hands that chrome back inside `.editor-inp-wrap`, which
+  supplies the currency/percent affix. Native number spinners are removed — 12px hit
+  targets that render differently per browser and let a stray scroll change a value — while
+  `type=number` is kept for the mobile keypad and validation; a document-level wheel handler
+  blurs a focused number input rather than letting it consume the scroll. Numbers are
+  right-aligned so columns line up. Selects use `appearance:none` plus an inline chevron so
+  they match on every platform.
+- **Explainers are native `<details>`.** Keyboard operation, ARIA semantics and
+  find-in-page expansion come free, and a collapsed panel costs nothing to render.
 - **Imported data is sanitised at the boundary.** `sanitizeHistory` in `engine.js` validates
   every history entry on load and on import, drops what cannot be trusted, and re-sorts
   chronologically — so a hand-edited backup or an out-of-order backfill can't put NaN on a chart.
@@ -119,6 +129,7 @@ Set in Vercel. None are needed for `npm run dev` except live market data.
 
 | Date | Change |
 |---|---|
+| 2026-09-01 | Collapsible how-to panels on every new feature (native `<details>`), and one unified field/select system across the app — see the input notes under architecture. |
 | 2026-09-01 | Eight features: benchmark counterfactual (+ `/api/market/history`), money-weighted IRR, savings-plan sync, backfillable history months, quote-staleness surfacing, dividend estimate, reworked Overview KPIs, review cadence. `engine.js` grew the pure layer for all of them (102 tests). |
 | 2026-09-01 | Stack modernised: React 19, Vite 8 (Rolldown bundler — build 1.9s to 0.6s), @vitejs/plugin-react 6 (oxc transform, no Babel), pdfjs-dist 6, ESLint 10.9.1. CI moved to Node 22 (Vite 8 requires ^20.19 or >=22.12). |
 | 2026-09-01 | Analytics tab added — hand-rolled SVG charts, no chart library. `engine.js` gains the analytics data layer. |
